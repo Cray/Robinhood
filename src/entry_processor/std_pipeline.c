@@ -923,6 +923,26 @@ int EntryProc_get_info_db( struct entry_proc_op_t *p_op, lmgr_t * lmgr )
             }
         }
 
+        /* in case of unlink, we need the backend path */
+        if ( p_op->extra_info.log_record.p_log_rec->cr_type == CL_UNLINK )
+            p_op->db_attr_need |= ATTR_MASK_backendpath;
+#endif
+
+        /* In case of a RENAME, match the new name (not the one from the DB). */
+        if ((logrec->cr_type == CL_EXT)
+             && (p_op->db_attr_need & ATTR_MASK_fullpath))
+        {
+            rc = Lustre_GetFullPath(&p_op->entry_id,
+                                    ATTR(&p_op->fs_attrs, fullpath),
+                                    sizeof(ATTR(&p_op->fs_attrs, fullpath)));
+            if (rc == 0)
+            {
+                ATTR_MASK_SET(&p_op->fs_attrs, fullpath);
+                p_op->db_attr_need &= ~ATTR_MASK_fullpath;
+            }
+        }
+
+>>>>>>> entry processor: don't rely on path from DB in case of rename.
         /* attributes to be retrieved */
         p_op->db_attrs.attr_mask = p_op->db_attr_need;
 
