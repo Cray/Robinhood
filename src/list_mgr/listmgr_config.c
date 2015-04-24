@@ -459,9 +459,3 @@ bool lmgr_parallel_batches(void)
 {
     return !lmgr_config.acct;
 }
-
-
-bool lmgr_parallel_batches(void)
-{
-    return !(lmgr_config.user_acct || lmgr_config.group_acct);
-}

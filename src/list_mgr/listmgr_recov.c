@@ -252,6 +252,10 @@ int ListMgr_RecovInit( lmgr_t * p_mgr, const lmgr_filter_t * p_filter, lmgr_reco
             DisplayLog( LVL_CRIT, LISTMGR_TAG, "Directory filter not supported for recovery");
             return DB_NOT_SUPPORTED;
         }
+        {
+            DisplayLog( LVL_CRIT, LISTMGR_TAG, "Directory filter not supported for recovery");
+            return DB_NOT_SUPPORTED;
+        }
 
         if (filter2str(p_mgr, filter_curr, p_filter, T_MAIN, AOF_PREFIX) > 0)
             filter_curr += strlen(filter_curr);

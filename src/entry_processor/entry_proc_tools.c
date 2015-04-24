@@ -279,39 +279,6 @@ static void entry_proc_cfg_write_default(FILE *output)
     print_line(output, 1, "match_classes          :  yes");
     print_line(output, 1, "detect_fake_mtime      :  no");
     print_end_block(output, 0);
-}
-
-#define CRITICAL_ERR_CHECK(_ptr_, _blkname_) do { if (!_ptr_) {\
-            sprintf(msg_out, "Internal error reading %s block in config file", \
-                    _blkname_); \
-
-    if (lmgr_parallel_batches())
-        conf->nb_thread = 16;
-    else
-        conf->nb_thread = 10;
-
-    /* for efficient batching of 1000 ops */
-    conf->max_pending_operations = 10000;
-    conf->max_batch_size = 1000;
-    conf->match_classes = true;
-
-    conf->detect_fake_mtime = false;
-}
-
-static void entry_proc_cfg_write_default(FILE *output)
-{
-    print_begin_block(output, 0, ENTRYPROC_CONFIG_BLOCK, NULL);
-
-    if (lmgr_parallel_batches())
-        print_line(output, 1, "nb_threads             :  16");
-    else
-        print_line(output, 1, "nb_threads             :  10");
-
-    print_line(output, 1, "max_pending_operations :  10000");
-    print_line(output, 1, "max_pending_operations :  10000");
-    print_line(output, 1, "max_batch_size         :  1000");
-    print_line(output, 1, "match_classes          :  yes");
-    print_line(output, 1, "detect_fake_mtime      :  no");
     print_end_block(output, 0);
 }
 
@@ -382,8 +349,6 @@ static int load_pipeline_config(const pipeline_descr_t *descr,
 
                 if ((i == descr->DB_APPLY) && (conf->nb_thread > 1))
                     /* don't starve other steps: max is nb_thread-1
-                if ((i == descr->DB_APPLY) && (conf->nb_thread > 1))
-                    /* don't starve other steps: max is nb_thread-1
                      * (except if nb_thread = 1) */
                     p[i].max_thread_count = MIN2(conf->nb_thread - 1, tmpval);
                 else
@@ -449,6 +414,8 @@ static void set_default_pipeline_config(const pipeline_descr_t *descr,
     }
 }
 
+static int entry_proc_cfg_read(config_file_t config, void *module_config,
+                               char *msg_out)
 {
     int rc, blc_index;
     entry_proc_config_t *conf = (entry_proc_config_t *) module_config;

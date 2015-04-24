@@ -270,6 +270,11 @@ int EntryProcessor_Init(pipeline_flavor_e flavor, run_flags_t flags, void *arg)
     }
 #endif
 
+    DisplayLog(LVL_FULL, "EntryProc_Config", "nb_threads=%u",
+               entry_proc_conf.nb_thread);
+    DisplayLog(LVL_FULL, "EntryProc_Config", "max_batch_size=%u",
+               entry_proc_conf.max_batch_size);
+    for (i = 0; i < entry_proc_descr.stage_count; i++) {
         if (entry_proc_pipeline[i].stage_flags & STAGE_FLAG_SEQUENTIAL)
             DisplayLog(LVL_FULL, "EntryProc_Config", "%s: sequential",
                        entry_proc_pipeline[i].stage_name);

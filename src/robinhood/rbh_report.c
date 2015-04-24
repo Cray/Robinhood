@@ -987,6 +987,14 @@ static int mk_global_filters(lmgr_filter_t *filter, bool do_display,
         str_subst(path_filter, "*", ".*");
         str_subst(path_filter, "?", ".");
 
+        /* as this is a RLIKE matching, shell regexp must be replaced by perl:
+         * [abc] => OK
+         * '*' => '.*'
+         * '?' => '.'
+         */
+        str_replace(path_filter, "*", ".*");
+        str_replace(path_filter, "?", ".");
+
         /* match 'path$' OR 'path/.*' */
         snprintf(path_regexp, RBH_PATH_MAX, "%s($|/.*)", path_filter);
 
