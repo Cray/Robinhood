@@ -1901,6 +1901,22 @@ static int check_table_acct(db_conn_t *pconn, bool *affects_trig)
             return rc;
         }
 
+        /* When running daemon mode with accounting disabled: drop ACCT table,
+         * else it may become inconsistent. */
+        if (!lmgr_config.user_acct && !lmgr_config.group_acct && !report_only)
+        {
+            DisplayLog(LVL_MAJOR, LISTMGR_TAG,
+                       "Accounting is disabled: dropping table "ACCT_TABLE);
+
+            rc = db_drop_component(pconn, DBOBJ_TABLE, ACCT_TABLE);
+            if (rc != DB_SUCCESS)
+                DisplayLog(LVL_CRIT, LISTMGR_TAG,
+                           "Failed to drop table: Error: %s",
+                           db_errmsg(pconn, strbuf, sizeof(strbuf)));
+
+            return rc;
+        }
+
         /* check primary key */
         cookie = -1;
         while ((i = attr_index_iter(0, &cookie)) != -1)
