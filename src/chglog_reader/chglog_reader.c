@@ -668,6 +668,45 @@ static uint16_t cl_rename2unlink_flags(uint16_t flags,
 }
 
 /**
+ * Convert rename flags to unlink flags, depending on Lustre client/server versions.
+ * @param[in]     flags            cr_flags from rename changelog record.
+ * @param[in,out] pipeline_flags   indicate if specific processing is needed in pipeline.
+ */
+static uint16_t cl_rename2unlink_flags(uint16_t flags, unsigned int *pipeline_flags)
+{
+    uint16_t retflg = 0;
+
+#ifdef CLF_RENAME_LAST
+    /* The client support LU-1331 (since CLF_RENAME_LAST is
+     * defined) but that may not be the case of the server. */
+    if (chglog_reader_config.mds_has_lu1331)
+    {
+        if (flags & CLF_RENAME_LAST)
+            retflg |= CLF_UNLINK_LAST;
+#ifdef CLF_RENAME_LAST_EXISTS
+        if (flags & CLF_RENAME_LAST_EXISTS)
+            retflg |= CLF_UNLINK_HSM_EXISTS;
+#endif
+
+    } else
+#endif
+    {
+        /* CLF_RENAME_LAST is not supported in this version of the
+         * client and/or the server. The pipeline will have to
+         * decide whether this is the last entry or not. */
+        *pipeline_flags |= CHECK_IF_LAST_ENTRY;
+    }
+
+    if (!chglog_reader_config.mds_has_lu543) {
+        /* The server doesn't tell whether the rename operation will
+         * remove a file. */
+        *pipeline_flags |= GET_FID_FROM_DB;
+    }
+
+    return retflg;
+}
+
+/**
  * Create a fake unlink changelog record that will be used to remove a
  * file that is overriden during a rename operation.
  *
