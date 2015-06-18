@@ -40,7 +40,7 @@ cd ./$(git rev-parse --show-cdup) &&
   git archive --format=tar --prefix=${JP_REPO}/ HEAD . | gzip > RPMBUILD/SOURCE/${SOURCE}
 
 # Initialize chroot.
-#mock -r ${MOCK_CONFIG} --resultdir ${RPMDIR} --init
+mock -r ${MOCK_CONFIG} --resultdir ${RPMDIR} --init
 
 # Create versioned spec file and rebuild package for each spec we find.
 ls jenkins/*.spec | while read SPECFILE; do
