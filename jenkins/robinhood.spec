@@ -62,6 +62,10 @@ BuildRequires: %{lpackage} >= %{lversion}    \
 BuildRequires: /usr/include/mysql/mysql.h    \
 %endif \
 BuildRequires: mailx \
+BuildRequires: libattr-devel   \
+BuildRequires: lustre-client-devel   \
+BuildRequires: mariadb-devel   \
+BuildRequires: mariadb-libs   \
 %{nil}
 
 # target install dir for web gui
