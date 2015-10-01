@@ -237,7 +237,7 @@ Generated using options:  '--with-purpose=LUSTRE_HSM'
 %endif
 
 %prep
-%setup -q -n robinhood-%{version}
+%setup -q -n %{name}
 
 %build
 ./configure  '--with-purpose=LUSTRE_HSM' %{?configure_flags:configure_flags} \
