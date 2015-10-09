@@ -19,6 +19,8 @@ Source0:    %_xyr_package_source
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 # You probably want to change this.
 ExclusiveArch:  x86_64
+%define with_lhsm 1
+%define with_lustre 1
 
 ### END Seagate Additions ###
 ##
