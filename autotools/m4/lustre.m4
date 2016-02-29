@@ -7,8 +7,8 @@ AC_DEFUN([AX_LUSTRE_VERSION],
         # special m4 sequences to get square brackets in output:
         # @<:@ => [
         # @:>@ => ]
-        LVERSION=`rpm -q "lustre" --qf "%{Version}\n" 2>/dev/null | tail -1 | cut -d "." -f 1-2`
-        LPACKAGE=`rpm -q "lustre" --qf "%{Name}\n"  2>/dev/null | tail -1`
+        LVERSION=`rpm -q "lustre-client" --qf "%{Version}\n" 2>/dev/null | tail -1 | cut -d "." -f 1-2`
+        LPACKAGE=`rpm -q "lustre-client" --qf "%{Name}\n"  2>/dev/null | tail -1`
 
         if test -z "$LVERSION"; then
             AC_MSG_RESULT(none installed)

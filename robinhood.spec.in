@@ -40,7 +40,7 @@ BuildRequires: libattr-devel
 BuildRequires: mailx
 %if %{with lustre}
 Requires: lustre >= %{lversion}
-BuildRequires: lustre >= %{lversion}
+# BuildRequires: lustre >= %{lversion}
 %endif
 %if %{with mysql}
 BuildRequires: /usr/include/mysql/mysql.h
