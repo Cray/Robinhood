@@ -14526,9 +14526,9 @@ _ACEOF
 
 
 
-build_lustre="OFF"
-build_backup="OFF"
-build_lhsm="OFF"
+build_lustre="ON"
+build_backup="ON"
+build_lhsm="ON"
 build_shook="OFF"
 
 # Check whether --enable-lustre was given.

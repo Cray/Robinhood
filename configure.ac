@@ -83,9 +83,9 @@ AX_ENABLE_FLAG( [fid2path-leading-slash], [must be enabled if fid2path() returns
 AX_PROG_MAIL
 
 
-build_lustre="OFF"
-build_backup="OFF"
-build_lhsm="OFF"
+build_lustre="ON"
+build_backup="ON"
+build_lhsm="ON"
 build_shook="OFF"
 
 AC_ARG_ENABLE( [lustre], AS_HELP_STRING([--disable-lustre],
