@@ -1,11 +1,12 @@
 umask 022
 
 # Select mock config for the kernel we are building with
-PROJECT=${JP_NEO_RELEASE}
+REPO=${JP_REPO:-robinhood}
+PROJECT=${JP_NEO_RELEASE:-osaint}
 MOCK_CONFIG=mock_${PROJECT}
 SCM_URL=${JP_SCM_URL:-http://seagate.com}
 VERSION=${JP_VERSION:-3.0}
-NEO_ID=${JP_NEO_ID:-o.1.0}
+NEO_ID=${JP_NEO_ID:-x.y.z}
 SOURCE=${REPO}-${VERSION}.tar.gz
 _PWD=$(pwd)
 WORKSPACE=${WORKSPACE:-$_PWD}
@@ -40,10 +41,12 @@ mkdir -p ${RPMDIR}/SPECS
 
 # Create tarball.  We will share one for all spec files.
 cd ./$(git rev-parse --show-cdup) &&
-  git archive --format=tar --prefix=${JP_REPO}/ HEAD . | gzip > RPMBUILD/SOURCE/${SOURCE}
+  git archive --format=tar --prefix=robinhood/ HEAD . | gzip > RPMBUILD/SOURCE/${SOURCE}
 
 # Initialize chroot.
-mock -r ${MOCK_CONFIG} --resultdir ${RPMDIR} --init
+if [ -z "${NOINIT}" ] ; then
+  mock -r ${MOCK_CONFIG} --resultdir ${RPMDIR} --init
+fi
 
 # Create versioned spec file and rebuild package for each spec we find.
 ls jenkins/*.spec | while read SPECFILE; do
@@ -51,15 +54,30 @@ ls jenkins/*.spec | while read SPECFILE; do
   PACKAGE=${PACKAGE%%.spec}
 
   # spec_update expects this name
-  ln -s ${SOURCE} RPMBUILD/SOURCE/${PACKAGE}.tar.gz
+  ln -s ${SOURCE} RPMBUILD/SOURCE/${PACKAGE}.tgz
 
   sh -x ${SPECUPDATE} ${PACKAGE} ${RPMVER} ${SCM_URL} ${WORKSPACE} ${RPMDIR} ${RPMREL} ${WORKSPACE}/${SPECFILE}
 
+  [ -f build_failed ] && rm build_failed
+
   mock --buildsrpm -r ${MOCK_CONFIG} --spec ${RPMDIR}/SPECS/${PACKAGE}.spec --sources ${RPMDIR}/SOURCE --resultdir ${RPMDIR} --no-clean --no-cleanup-after -v
+  rval=$?
+  if [ "$rval" != "0" ] ; then
+        touch build_failed
+  fi
 
   mock --rebuild -r ${MOCK_CONFIG} --no-clean --no-cleanup-after -v --rebuild ${RPMDIR}/${PACKAGE}*.src.rpm --resultdir ${RPMDIR}
+  rval=$?
+  if [ "$rval" != "0" ] ; then
+        touch build_failed
+  fi
 
 done
 
-
-echo "Complete Build"
+if [ -f build_failed ] ; then
+   echo "RPM Build(s) failed"
+   exit -3
+else
+   echo "Complete Build"
+   exit 0
+fi
