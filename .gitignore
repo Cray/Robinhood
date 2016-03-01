@@ -11,6 +11,8 @@
 *.gcno
 *~
 TAGS
+build_failed
+RPMBUILD
 
 # /autotools/depcomp
 # /autotools/install-sh
