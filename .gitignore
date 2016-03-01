@@ -52,7 +52,7 @@ TAGS
 /src/fs_scan/Makefile
 /src/include/Makefile
 /src/include/config.h
-/src/include/config.h.in
+# /src/include/config.h.in
 /src/include/stamp-h1
 /src/list_mgr/Makefile
 /src/logs/Makefile
