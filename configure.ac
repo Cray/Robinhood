@@ -146,9 +146,9 @@ AC_ARG_ENABLE([common-rpms], AS_HELP_STRING([--disable-common-rpms],
               [common_rpms="$enableval"],[common_rpms="yes"])
 AM_CONDITIONAL(COMMON_RPMS,test  "x$common_rpms" = "xyes")
 
-build_lustre="OFF"
-build_backup="OFF"
-build_lhsm="OFF"
+build_lustre="ON"
+build_backup="ON"
+build_lhsm="ON"
 build_shook="OFF"
 
 AC_ARG_ENABLE([lustre], AS_HELP_STRING([--disable-lustre],

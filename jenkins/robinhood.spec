@@ -242,7 +242,13 @@ Generated using options:  '--with-purpose=LUSTRE_HSM'
 %setup -q -n %{name}
 
 %build
+<<<<<<< HEAD:jenkins/robinhood.spec
 ./configure  '--with-purpose=LUSTRE_HSM' %{?configure_flags:configure_flags} \
+||||||| merged common ancestors
+./configure  '--enable-lustre' %{?configure_flags:configure_flags} \
+=======
+./configure  %{?configure_flags:configure_flags} \
+>>>>>>> Make lustre hsm the default in generated configure script:robinhood.spec
         --mandir=%{_mandir} \
         --libdir=%{_libdir}
 make %{?_smp_mflags}
