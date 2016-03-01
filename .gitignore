@@ -36,7 +36,7 @@ TAGS
 /doc/doxygen/doxygen.cfg
 /man/Makefile
 /robinhood-*.tar.gz
-/robinhood.spec
+# /robinhood.spec
 /rpms/
 /scripts/Makefile
 /scripts/robinhood.init
