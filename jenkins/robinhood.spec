@@ -79,9 +79,9 @@ BuildRequires: mailx \
 
 %if %{with lustre}
 %if %{defined lversion}
-%define config_dependant .lustre%{lversion}
+%define config_dependant .lustre_client%{lversion}
 %else
-%define config_dependant .lustre
+%define config_dependant .lustre_client
 %endif
 %endif
 
@@ -242,13 +242,7 @@ Generated using options:  '--with-purpose=LUSTRE_HSM'
 %setup -q -n %{name}
 
 %build
-<<<<<<< HEAD:jenkins/robinhood.spec
 ./configure  '--with-purpose=LUSTRE_HSM' %{?configure_flags:configure_flags} \
-||||||| merged common ancestors
-./configure  '--enable-lustre' %{?configure_flags:configure_flags} \
-=======
-./configure  %{?configure_flags:configure_flags} \
->>>>>>> Make lustre hsm the default in generated configure script:robinhood.spec
         --mandir=%{_mandir} \
         --libdir=%{_libdir}
 make %{?_smp_mflags}

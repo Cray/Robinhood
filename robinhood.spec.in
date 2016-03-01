@@ -50,9 +50,9 @@ Prefix: %{_prefix}
 
 %if %{with lustre}
 %if %{defined lversion}
-%define config_dependant .lustre%{lversion}
+%define config_dependant .lustre_client%{lversion}
 %else
-%define config_dependant .lustre
+%define config_dependant .lustre_client
 %endif
 %endif
 
