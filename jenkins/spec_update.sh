@@ -19,7 +19,7 @@ sed -e '/#xyr build defines/,/#xyr end defines/d'  ${SRCSPECFILE} > ${RPMSPECFIL
 
 echo "#xyr build defines" > ${RPMSPECFILE}
 echo "%define _xyr_package_name     ${name}" >> ${RPMSPECFILE}
-echo "%define _xyr_package_source   ${name}.tgz" >>  ${RPMSPECFILE}
+echo "%define _xyr_package_source   ${name}.tar.gz" >>  ${RPMSPECFILE}
 echo "%define _xyr_package_version  ${version}" >>  ${RPMSPECFILE}
 echo "%define _xyr_build_number     ${BUILD_NUMBER}" >>  ${RPMSPECFILE}
 
