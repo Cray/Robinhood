@@ -1,3 +1,30 @@
+#xyr build defines
+%define _xyr_package_name       robinhood
+%define _xyr_package_source     robinhood.tar.gz
+%define _xyr_package_version    3.0
+%define _xyr_build_number       1
+%define _xyr_pkg_url            http://es-gerrit.xyus.xyratex.com:8080/robinhood
+%define _xyr_svn_version        0
+#xyr end defines
+
+Name:       %_xyr_package_name
+Version:    %_xyr_package_version
+Release:    %_xyr_build_number
+Summary:    Robinhood - Policy engine and accounting tool for large filesystems
+
+Group:      Applications/System
+License:    CeCILL-C
+URL:        http://seagate.com
+Source0:    %_xyr_package_source
+BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+# You probably want to change this.
+ExclusiveArch:  x86_64
+%define with_lhsm 1
+%define with_lustre 1
+
+
+# End Seagate meta information
+
 # default ON
 %bcond_without lustre
 %bcond_without lhsm
@@ -20,9 +47,9 @@ Prefix: %{_prefix}
 
 %if %{with lustre}
 %if %{defined lversion}
-%define config_dependant .lustre%{lversion}
+%define config_dependant .lustre_client%{lversion}
 %else
-%define config_dependant .lustre
+%define config_dependant .lustre_client
 %endif
 %endif
 
@@ -39,8 +66,8 @@ BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
 BuildRequires: mailx
 %if %{with lustre}
-Requires: lustre >= %{lversion}
-# BuildRequires: lustre >= %{lversion}
+Requires: lustre-client >= %{lversion}
+BuildRequires: lustre-client >= %{lversion}
 %endif
 %if %{with mysql}
 BuildRequires: /usr/include/mysql/mysql.h
