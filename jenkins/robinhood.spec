@@ -1,6 +1,6 @@
 #xyr build defines
 %define _xyr_package_name       robinhood
-%define _xyr_package_source     robinhood.tgz
+%define _xyr_package_source     robinhood.tar.gz
 %define _xyr_package_version    3.0
 %define _xyr_build_number       1
 %define _xyr_pkg_url            http://es-gerrit.xyus.xyratex.com:8080/robinhood
