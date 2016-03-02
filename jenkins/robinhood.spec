@@ -60,8 +60,8 @@ Summary: Robinhood - Policy engine and reporting tool for large filesystems
 License: CeCILL-C
 Group: Applications/System
 Url: http://robinhood.sourceforge.net
-Source0: robinhood-%{version}.tar.gz
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+#Source0: robinhood-%{version}.tar.gz
+#BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
 BuildRequires: mailx
