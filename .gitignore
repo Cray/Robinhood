@@ -14,17 +14,10 @@ Makefile
 *~
 \#*\#
 TAGS
-<<<<<<< HEAD
 cscope.*
 build_failed
 RPMBUILD
-||||||| merged common ancestors
-=======
-build_failed
-RPMBUILD
->>>>>>> Squashed commit of the following:
 
-<<<<<<< HEAD
 /autotools/depcomp
 /autotools/install-sh
 /autotools/ltmain.sh
@@ -42,41 +35,6 @@ RPMBUILD
 /autotools/test-driver
 /autom4te.cache
 /config.status
-||||||| merged common ancestors
-# /autotools/depcomp
-# /autotools/install-sh
-# /autotools/ltmain.sh
-# /autotools/missing
-# /autotools/compile
-# /autotools/config.guess
-# /autotools/config.sub
-# /autotools/ar-lib
-# /autotools/m4/libtool.m4
-# /autotools/m4/ltoptions.m4
-# /autotools/m4/ltsugar.m4
-# /autotools/m4/ltversion.m4
-# /autotools/m4/lt~obsolete.m4
-# /autotools/ylwrap
-# /autom4te.cache
-# /config.status
-=======
-# /autotools/depcomp
-# /autotools/install-sh
-# /autotools/ltmain.sh
-# /autotools/missing
-# /autotools/compile
-# /autotools/config.guess
-# /autotools/config.sub
-# /autotools/ar-lib
-# /autotools/m4/libtool.m4
-# /autotools/m4/ltoptions.m4
-# /autotools/m4/ltsugar.m4
-# /autotools/m4/ltversion.m4
-# /autotools/m4/lt~obsolete.m4
-# /autotools/ylwrap
-/autom4te.cache
-/config.status
->>>>>>> Squashed commit of the following:
 /libtool
 /Makefile
 /aclocal.m4
@@ -88,6 +46,8 @@ RPMBUILD
 /robinhood.spec
 /rpms/
 /scripts/Makefile
+/scripts/ld.so.robinhood.conf
+/scripts/make_mans.sh
 /scripts/robinhood.init
 /scripts/robinhood.init.sles
 /scripts/robinhood.service
@@ -96,8 +56,7 @@ RPMBUILD
 /scripts/ld.so.robinhood.conf
 /scripts/rbh_cksum.sh
 /src/Makefile
-/src/todo
-/src/robinhood/todo
+/src/backend_ext/Makefile
 /src/cfg_parsing/Makefile
 /src/chglog_reader/Makefile
 /src/common/Makefile
@@ -107,8 +66,11 @@ RPMBUILD
 /src/include/config.h
 /src/include/config.h.in
 /src/include/stamp-h1
+/src/include/tmp_fs_mgr_types.h
 /src/list_mgr/Makefile
 /src/logs/Makefile
+/src/modules/Makefile
+/src/policies/Makefile
 /src/policy_matching/Makefile
 /src/policy_modules/Makefile
 /src/policy_modules/hsm_remove/Makefile
