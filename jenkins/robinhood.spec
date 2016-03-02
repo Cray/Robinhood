@@ -39,8 +39,8 @@ ExclusiveArch:  x86_64
 
 ###### end of macro definitions #####
 
-Name: robinhood
-Version: 3.0
+# Name: robinhood
+# Version: 3.0
 
 Vendor: CEA, HPC department <http://www-hpc.cea.fr>
 Prefix: %{_prefix}
@@ -53,13 +53,13 @@ Prefix: %{_prefix}
 %endif
 %endif
 
-Release: 0.alpha1%{?config_dependant}%{?dist}
+# Release: 0.alpha1%{?config_dependant}%{?dist}
 
 
-Summary: Robinhood - Policy engine and reporting tool for large filesystems
-License: CeCILL-C
+# Summary: Robinhood - Policy engine and reporting tool for large filesystems
+# License: CeCILL-C
 Group: Applications/System
-Url: http://robinhood.sourceforge.net
+# ggjjggjjUrl: http://robinhood.sourceforge.net
 #Source0: robinhood-%{version}.tar.gz
 #BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glib2-devel >= 2.16
@@ -87,7 +87,7 @@ Generated using options:
 %package adm
 Summary: admin/config helper for Robinhood PolicyEngine
 Group: Applications/System
-Release: 0.alpha1.noarch
+Release: %_xyr_build_number
 
 %description adm
 This RPM provides an admin/config helper for Robinhood PolicyEngine (command rbh-config).
@@ -96,7 +96,7 @@ This RPM provides an admin/config helper for Robinhood PolicyEngine (command rbh
 %package webgui
 Summary: Web interface to vizualize filesystems stats
 Group: Applications/System
-Release: 0.alpha1.noarch
+Release: %_xyr_build_number
 Requires: php, php-mysql, php-xml, php-gd, php-pdo
 
 %description webgui
@@ -117,7 +117,7 @@ Tools for MDS recovery.
 Summary: Test suite for Robinhood
 Group: Applications/System
 Requires: robinhood robinhood-adm
-Release: 0.alpha1.noarch
+Release: %_xyr_build_number
 
 %description tests
 Lustre and Posix tests for Robinhood.

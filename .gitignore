@@ -28,25 +28,28 @@ RPMBUILD
 # /autotools/m4/ltversion.m4
 # /autotools/m4/lt~obsolete.m4
 # /autotools/ylwrap
-/autom4te.cache
-/config.status
-/libtool
-/Makefile
 # /aclocal.m4
-/config.log
 # /configure
+# /robinhood.spec
+# /src/include/config.h.in
+/Makefile
+/TODO
+/autom4te.cache
+/config.log
+/config.status
 /doc/doxygen/doxygen.cfg
+/libtool
 /man/Makefile
 /robinhood-*.tar.gz
-# /robinhood.spec
 /rpms/
 /scripts/Makefile
+/scripts/ld.so.robinhood.conf
+/scripts/make_mans.sh
 /scripts/robinhood.init
 /scripts/robinhood.init.sles
 /scripts/sysconfig_robinhood
 /src/Makefile
-/src/todo
-/src/robinhood/todo
+/src/backend_ext/Makefile
 /src/cfg_parsing/Makefile
 /src/chglog_reader/Makefile
 /src/common/Makefile
@@ -54,10 +57,14 @@ RPMBUILD
 /src/fs_scan/Makefile
 /src/include/Makefile
 /src/include/config.h
-# /src/include/config.h.in
+/src/include/hsmlite_types.h
+/src/include/lustre_hsm_types.h
 /src/include/stamp-h1
+/src/include/tmp_fs_mgr_types.h
 /src/list_mgr/Makefile
 /src/logs/Makefile
+/src/modules/Makefile
+/src/policies/Makefile
 /src/policy_matching/Makefile
 /src/policy_modules/Makefile
 /src/policy_modules/hsm_remove/Makefile
@@ -65,41 +72,37 @@ RPMBUILD
 /src/policy_modules/purge/Makefile
 /src/policy_modules/rmdir/Makefile
 /src/robinhood/Makefile
-/src/tests/Makefile
-/src/backend_ext/Makefile
-/tests/Makefile
-/web_gui/Makefile
 /src/robinhood/rbh-backup
+/src/robinhood/rbh-backup-diff
 /src/robinhood/rbh-backup-du
 /src/robinhood/rbh-backup-find
 /src/robinhood/rbh-backup-import
+/src/robinhood/rbh-backup-rebind
 /src/robinhood/rbh-backup-recov
 /src/robinhood/rbh-backup-report
 /src/robinhood/rbh-backup-undo-rm
-/src/robinhood/rbh-backup-diff
-/src/robinhood/rbh-backup-rebind
-/src/tools/Makefile
-/src/tools/gen_lov_objid
-/src/tools/read_lovea
-/src/tools/set_lovea
-/src/tools/ost_fids_remap
+/src/robinhood/rbh-diff
 /src/robinhood/rbh-du
 /src/robinhood/rbh-find
-/src/robinhood/rbh-report
-/src/robinhood/rbh-diff
-/src/robinhood/robinhood
 /src/robinhood/rbh-lhsm
+/src/robinhood/rbh-lhsm-diff
 /src/robinhood/rbh-lhsm-du
 /src/robinhood/rbh-lhsm-find
 /src/robinhood/rbh-lhsm-import
 /src/robinhood/rbh-lhsm-recov
 /src/robinhood/rbh-lhsm-report
 /src/robinhood/rbh-lhsm-undo-rm
-/src/robinhood/rbh-lhsm-diff
+/src/robinhood/rbh-report
+/src/robinhood/robinhood
+/src/robinhood/todo
+/src/tests/Makefile
+/src/todo
+/src/tools/Makefile
+/src/tools/gen_lov_objid
+/src/tools/ost_fids_remap
+/src/tools/read_lovea
+/src/tools/set_lovea
+/tests/Makefile
 /tests/lustre_fs/*.log
 /tests/posix_fs/*.log
-/TODO
-/src/include/hsmlite_types.h
-/src/include/lustre_hsm_types.h
-/src/include/tmp_fs_mgr_types.h
-/scripts/make_mans.sh
+/web_gui/Makefile
