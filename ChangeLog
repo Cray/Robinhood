@@ -1,3 +1,4 @@
+<<<<<<< HEAD:ChangeLog
 Main changes in robinhood 3.0:
 * Policies at will:
     - Define new custom policies at will, just by writting just a few lines of configuration.
@@ -87,6 +88,561 @@ Changes between version 2.5.2 and 2.5.3:
 
 Changes between version 2.5.1 and 2.5.2:
 
+||||||| merged common ancestors
+# default ON
+%bcond_without lustre
+%bcond_without lhsm
+%bcond_without mysql
+%bcond_without backup
+# default OFF
+%bcond_with shook
+%bcond_with recovtools
+
+# target install dir for web gui
+%define installdir_www  /var/www/html
+
+###### end of macro definitions #####
+
+Name: robinhood
+Version: 3.0
+
+Vendor: CEA, HPC department <http://www-hpc.cea.fr>
+Prefix: %{_prefix}
+
+%if %{with lustre}
+%if %{defined lversion}
+%define config_dependant .lustre%{lversion}
+%else
+%define config_dependant .lustre
+%endif
+%endif
+
+Release: 0.alpha1%{?config_dependant}%{?dist}
+
+
+Summary: Robinhood - Policy engine and reporting tool for large filesystems
+License: CeCILL-C
+Group: Applications/System
+Url: http://robinhood.sourceforge.net
+Source0: robinhood-%{version}.tar.gz
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires: glib2-devel >= 2.16
+BuildRequires: libattr-devel
+BuildRequires: mailx
+%if %{with lustre}
+Requires: lustre >= %{lversion}
+# BuildRequires: lustre >= %{lversion}
+%endif
+%if %{with mysql}
+BuildRequires: /usr/include/mysql/mysql.h
+%endif
+Obsoletes: robinhood-tmpfs < 3.0, robinhood-backup < 3.0, robinhood-lhsm < 3.0
+
+%description
+Robinhood is a tool for monitoring and purging file systems. It is designed to
+process all its tasks in parallel, so it is particularly adapted for managing
+large file systems with millions of entries and petabytes of data.
+
+With support for: %{?with_lustre:Lustre} %{?with_backup:Backup} %{?with_shook:shook}
+
+Generated using options: 
+
+
+%package adm
+Summary: admin/config helper for Robinhood PolicyEngine
+Group: Applications/System
+Release: 0.alpha1.noarch
+
+%description adm
+This RPM provides an admin/config helper for Robinhood PolicyEngine (command rbh-config).
+
+
+%package webgui
+Summary: Web interface to vizualize filesystems stats
+Group: Applications/System
+Release: 0.alpha1.noarch
+Requires: php, php-mysql, php-xml, php-gd, php-pdo
+
+%description webgui
+Web interface to vizualize filesystems stats.
+This uses robinhood database to display misc. user and group stats.
+
+
+%if %{with recovtools}
+%package recov-tools
+Summary: Tools for MDS recovery.
+Group: Applications/System
+
+%description recov-tools
+Tools for MDS recovery.
+%endif
+
+%package tests
+Summary: Test suite for Robinhood
+Group: Applications/System
+Requires: robinhood robinhood-adm
+Release: 0.alpha1.noarch
+
+%description tests
+Lustre and Posix tests for Robinhood.
+
+%prep
+%setup -q -n robinhood-%{version}
+
+%build
+./configure  %{?configure_flags:configure_flags} \
+        --mandir=%{_mandir} \
+        --libdir=%{_libdir}
+make %{?_smp_mflags}
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT
+make install DESTDIR=$RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes
+mkdir -p $RPM_BUILD_ROOT/%{_initrddir}
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d
+
+%if %{with lhsm}
+install -m 644 doc/templates/includes/lhsm.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+%endif
+install -m 644 doc/templates/includes/tmpfs.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/includes/alerts.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/example.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+install -m 644 doc/templates/basic.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+
+%if %{defined suse_version}
+install -m 755 scripts/robinhood.init.sles $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%else
+install -m 755 scripts/robinhood.init $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%endif
+
+mkdir $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig
+install -m 644 scripts/sysconfig_robinhood $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/robinhood
+
+install -m 644 scripts/ld.so.robinhood.conf $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+mkdir -p $RPM_BUILD_ROOT/%{installdir_www}/robinhood
+cp -r web_gui/acct/* $RPM_BUILD_ROOT/%{installdir_www}/robinhood/.
+cp    web_gui/acct/.htaccess $RPM_BUILD_ROOT/%{installdir_www}/robinhood/.
+
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.a
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.la
+
+# Add an unmutable copy of the templates for the tests
+mkdir -p $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+cp -a doc/templates $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%post
+ldconfig
+if [ -x %{_initrddir}/robinhood ]; then
+  if %{_initrddir}/robinhood status | grep running | grep -v "not running"  >/dev/null 2>&1; then
+    %{_initrddir}/robinhood stop
+    WASRUNNING=1
+  fi
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --add robinhood
+  if test x$WASRUNNING = x1; then
+    %{_initrddir}/robinhood start
+  fi
+fi
+
+%preun
+if [ "$1" = 0 ]; then
+  if [ -x %{_initrddir}/robinhood ]; then
+     [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+    if %{_initrddir}/robinhood status | grep running | grep -v "not running" >/dev/null 2>&1; then
+      %{_initrddir}/robinhood stop
+    fi
+  fi
+fi
+
+%postun
+ldconfig
+
+%files adm
+%{_sbindir}/rbh-config
+
+%if %{with recovtools}
+%files recov-tools
+%{_sbindir}/*lovea
+%{_sbindir}/gen_lov_objid
+%{_sbindir}/ost_fids_remap
+%endif
+
+%if %{with shook}
+%files robinhood-annex
+%{_sbindir}/rbh-rebind
+%endif
+
+%files webgui
+
+# set apache permissions
+%defattr(750,root,apache)
+%{installdir_www}/robinhood
+
+%files tests
+%defattr(-,root,root,-)
+%dir %{_datadir}/robinhood/
+%{_datadir}/robinhood/tests/
+%{_datadir}/robinhood/doc/
+
+%files
+%defattr(-,root,root,-)
+#%doc README
+#%doc COPYING
+#%doc ChangeLog
+
+# everythink in sbin, except rbh-config which is in adm
+%if %{with shook}
+%exclude %{_sbindir}/rbh-rebind
+%{_sbindir}/rbh-import
+%{_sbindir}/rbh-recov
+%endif
+
+%if %{with backup}
+# NOT ADAPTED TO v3 YET
+#%{_sbindir}/rbh-import
+#%{_sbindir}/rbh-recov
+#%{_sbindir}/rbh-rebind
+%{_sbindir}/rbhext_*
+%endif
+
+%{_sbindir}/robinhood
+%{_sbindir}/rbh-report
+%{_sbindir}/rbh-diff
+%{_sbindir}/rbh-undelete
+%{_bindir}/rbh-du
+%{_bindir}/rbh-find
+
+%{_libdir}/robinhood/librbh_mod_*.so*
+
+%{_mandir}/man1/*
+
+%config(noreplace) %{_sysconfdir}/sysconfig/robinhood
+
+%dir %{_sysconfdir}/robinhood.d
+%dir %{_sysconfdir}/robinhood.d/includes
+%dir %{_sysconfdir}/robinhood.d/templates
+
+%dir %{_sysconfdir}/ld.so.conf.d
+%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+%if %{with lhsm}
+%config %{_sysconfdir}/robinhood.d/includes/lhsm.inc
+%endif
+%config %{_sysconfdir}/robinhood.d/includes/tmpfs.inc
+%config %{_sysconfdir}/robinhood.d/includes/alerts.inc
+%config %{_sysconfdir}/robinhood.d/templates/example.conf
+%config %{_sysconfdir}/robinhood.d/templates/basic.conf
+
+%{_initrddir}/robinhood
+
+%changelog
+
+* Mon Dec 08 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.4
+- [lustre] Lustre 2.4+: detect all stripe changes and update the DB accordingly.
+- [scan] Prevent from dropping entries from DB when opendir or stat fail.
+- [DB] Optimization to batch more DB requests.
+- [DB] Allow using any MySQL engine (new config parameter: listmanager::mysql::engine).
+- [rbh-config] Avoid backup_db to lock the whole tables with innodb.
+- [bugfix] Improve robustness to corrupted mtimes.
+- [bugfix] Fix possible crash in db_exec_sql.
+- [bugfix] Fix possible overflow when executing a custom archive command.
+- [backup mode] Clean all non-printable characters in backend path.
+- [pkg] libattr-devel is now mandatory to build robinhood.
+
+* Tue Jul 29 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.3
+- [bugfix] custom purge_command: fixed vulnerability to malicious file names.
+- [bugfix] changelog processing: fixed errors 'Entry has incomplete path in DB' in some case of rm/create patterns.
+- [bugfix] migration policy (fix): don't trigger copy of files that no longer exist.
+- [feature] rbh-config: new option 'reset_acct' to rebuild accounting info.
+- [feature] changelog reader: new parameter 'dump_file' to dump all incoming changelog records to a file.
+- [compat] port to Lustre 2.6.0.
+
+* Wed May 21 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.2
+=======
+# default ON
+%bcond_without lustre
+%bcond_without lhsm
+%bcond_without mysql
+%bcond_without backup
+# default OFF
+%bcond_with shook
+%bcond_with recovtools
+
+# target install dir for web gui
+%define installdir_www  /var/www/html
+
+###### end of macro definitions #####
+
+Name: robinhood
+Version: 3.0
+
+Vendor: CEA, HPC department <http://www-hpc.cea.fr>
+Prefix: %{_prefix}
+
+%if %{with lustre}
+%if %{defined lversion}
+%define config_dependant .lustre_client%{lversion}
+%else
+%define config_dependant .lustre_client
+%endif
+%endif
+
+Release: 0.alpha1%{?config_dependant}%{?dist}
+
+
+Summary: Robinhood - Policy engine and reporting tool for large filesystems
+License: CeCILL-C
+Group: Applications/System
+Url: http://robinhood.sourceforge.net
+Source0: robinhood-%{version}.tar.gz
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires: glib2-devel >= 2.16
+BuildRequires: libattr-devel
+BuildRequires: mailx
+%if %{with lustre}
+Requires: lustre-client >= %{lversion}
+BuildRequires: lustre-client >= %{lversion}
+%endif
+%if %{with mysql}
+BuildRequires: /usr/include/mysql/mysql.h
+%endif
+Obsoletes: robinhood-tmpfs < 3.0, robinhood-backup < 3.0, robinhood-lhsm < 3.0
+
+%description
+Robinhood is a tool for monitoring and purging file systems. It is designed to
+process all its tasks in parallel, so it is particularly adapted for managing
+large file systems with millions of entries and petabytes of data.
+
+With support for: %{?with_lustre:Lustre} %{?with_backup:Backup} %{?with_shook:shook}
+
+Generated using options: 
+
+
+%package adm
+Summary: admin/config helper for Robinhood PolicyEngine
+Group: Applications/System
+Release: 0.alpha1.noarch
+
+%description adm
+This RPM provides an admin/config helper for Robinhood PolicyEngine (command rbh-config).
+
+
+%package webgui
+Summary: Web interface to vizualize filesystems stats
+Group: Applications/System
+Release: 0.alpha1.noarch
+Requires: php, php-mysql, php-xml, php-gd, php-pdo
+
+%description webgui
+Web interface to vizualize filesystems stats.
+This uses robinhood database to display misc. user and group stats.
+
+
+%if %{with recovtools}
+%package recov-tools
+Summary: Tools for MDS recovery.
+Group: Applications/System
+
+%description recov-tools
+Tools for MDS recovery.
+%endif
+
+%package tests
+Summary: Test suite for Robinhood
+Group: Applications/System
+Requires: robinhood robinhood-adm
+Release: 0.alpha1.noarch
+
+%description tests
+Lustre and Posix tests for Robinhood.
+
+%prep
+%setup -q -n robinhood-%{version}
+
+%build
+./configure  %{?configure_flags:configure_flags} \
+        --mandir=%{_mandir} \
+        --libdir=%{_libdir}
+make %{?_smp_mflags}
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT
+make install DESTDIR=$RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes
+mkdir -p $RPM_BUILD_ROOT/%{_initrddir}
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d
+
+%if %{with lhsm}
+install -m 644 doc/templates/includes/lhsm.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+%endif
+install -m 644 doc/templates/includes/tmpfs.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/includes/alerts.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/example.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+install -m 644 doc/templates/basic.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+
+%if %{defined suse_version}
+install -m 755 scripts/robinhood.init.sles $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%else
+install -m 755 scripts/robinhood.init $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%endif
+
+mkdir $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig
+install -m 644 scripts/sysconfig_robinhood $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/robinhood
+
+install -m 644 scripts/ld.so.robinhood.conf $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+mkdir -p $RPM_BUILD_ROOT/%{installdir_www}/robinhood
+cp -r web_gui/acct/* $RPM_BUILD_ROOT/%{installdir_www}/robinhood/.
+cp    web_gui/acct/.htaccess $RPM_BUILD_ROOT/%{installdir_www}/robinhood/.
+
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.a
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.la
+
+# Add an unmutable copy of the templates for the tests
+mkdir -p $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+cp -a doc/templates $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%post
+ldconfig
+if [ -x %{_initrddir}/robinhood ]; then
+  if %{_initrddir}/robinhood status | grep running | grep -v "not running"  >/dev/null 2>&1; then
+    %{_initrddir}/robinhood stop
+    WASRUNNING=1
+  fi
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --add robinhood
+  if test x$WASRUNNING = x1; then
+    %{_initrddir}/robinhood start
+  fi
+fi
+
+%preun
+if [ "$1" = 0 ]; then
+  if [ -x %{_initrddir}/robinhood ]; then
+     [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+    if %{_initrddir}/robinhood status | grep running | grep -v "not running" >/dev/null 2>&1; then
+      %{_initrddir}/robinhood stop
+    fi
+  fi
+fi
+
+%postun
+ldconfig
+
+%files adm
+%{_sbindir}/rbh-config
+
+%if %{with recovtools}
+%files recov-tools
+%{_sbindir}/*lovea
+%{_sbindir}/gen_lov_objid
+%{_sbindir}/ost_fids_remap
+%endif
+
+%if %{with shook}
+%files robinhood-annex
+%{_sbindir}/rbh-rebind
+%endif
+
+%files webgui
+
+# set apache permissions
+%defattr(750,root,apache)
+%{installdir_www}/robinhood
+
+%files tests
+%defattr(-,root,root,-)
+%dir %{_datadir}/robinhood/
+%{_datadir}/robinhood/tests/
+%{_datadir}/robinhood/doc/
+
+%files
+%defattr(-,root,root,-)
+#%doc README
+#%doc COPYING
+#%doc ChangeLog
+
+# everythink in sbin, except rbh-config which is in adm
+%if %{with shook}
+%exclude %{_sbindir}/rbh-rebind
+%{_sbindir}/rbh-import
+%{_sbindir}/rbh-recov
+%endif
+
+%if %{with backup}
+# NOT ADAPTED TO v3 YET
+#%{_sbindir}/rbh-import
+#%{_sbindir}/rbh-recov
+#%{_sbindir}/rbh-rebind
+%{_sbindir}/rbhext_*
+%endif
+
+%{_sbindir}/robinhood
+%{_sbindir}/rbh-report
+%{_sbindir}/rbh-diff
+%{_sbindir}/rbh-undelete
+%{_bindir}/rbh-du
+%{_bindir}/rbh-find
+
+%{_libdir}/robinhood/librbh_mod_*.so*
+
+%{_mandir}/man1/*
+
+%config(noreplace) %{_sysconfdir}/sysconfig/robinhood
+
+%dir %{_sysconfdir}/robinhood.d
+%dir %{_sysconfdir}/robinhood.d/includes
+%dir %{_sysconfdir}/robinhood.d/templates
+
+%dir %{_sysconfdir}/ld.so.conf.d
+%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+%if %{with lhsm}
+%config %{_sysconfdir}/robinhood.d/includes/lhsm.inc
+%endif
+%config %{_sysconfdir}/robinhood.d/includes/tmpfs.inc
+%config %{_sysconfdir}/robinhood.d/includes/alerts.inc
+%config %{_sysconfdir}/robinhood.d/templates/example.conf
+%config %{_sysconfdir}/robinhood.d/templates/basic.conf
+
+%{_initrddir}/robinhood
+
+%changelog
+
+* Mon Dec 08 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.4
+- [lustre] Lustre 2.4+: detect all stripe changes and update the DB accordingly.
+- [scan] Prevent from dropping entries from DB when opendir or stat fail.
+- [DB] Optimization to batch more DB requests.
+- [DB] Allow using any MySQL engine (new config parameter: listmanager::mysql::engine).
+- [rbh-config] Avoid backup_db to lock the whole tables with innodb.
+- [bugfix] Improve robustness to corrupted mtimes.
+- [bugfix] Fix possible crash in db_exec_sql.
+- [bugfix] Fix possible overflow when executing a custom archive command.
+- [backup mode] Clean all non-printable characters in backend path.
+- [pkg] libattr-devel is now mandatory to build robinhood.
+
+* Tue Jul 29 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.3
+- [bugfix] custom purge_command: fixed vulnerability to malicious file names.
+- [bugfix] changelog processing: fixed errors 'Entry has incomplete path in DB' in some case of rm/create patterns.
+- [bugfix] migration policy (fix): don't trigger copy of files that no longer exist.
+- [feature] rbh-config: new option 'reset_acct' to rebuild accounting info.
+- [feature] changelog reader: new parameter 'dump_file' to dump all incoming changelog records to a file.
+- [compat] port to Lustre 2.6.0.
+
+* Wed May 21 2014 Thomas Leibovici <thomas.leibovici@cea.fr> 2.5.2
+>>>>>>> Squashed commit of the following::robinhood.spec
 - rbh-du: fixed major performance regression (since v2.5.0).
 - rbh-find: fixed occasional crash.
 - HSM and backup modes: fixed a risk of removing an existing entry from the backend
