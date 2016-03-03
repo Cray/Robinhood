@@ -6,7 +6,7 @@ PROJECT=${JP_NEO_RELEASE:-osaint}
 MOCK_CONFIG=mock_${PROJECT}
 SCM_URL=${JP_SCM_URL:-http://seagate.com}
 VERSION=${JP_VERSION:-3.0}
-NEO_ID=${JP_NEO_ID:-o.1.0}
+NEO_ID=${JP_NEO_ID:-x.y.z}
 SOURCE=${REPO}-${VERSION}.tar.gz
 _PWD=$(pwd)
 WORKSPACE=${WORKSPACE:-$_PWD}
@@ -54,7 +54,7 @@ ls jenkins/*.spec | while read SPECFILE; do
   PACKAGE=${PACKAGE%%.spec}
 
   # spec_update expects this name
-  ln -s ${SOURCE} RPMBUILD/SOURCE/${PACKAGE}.tar.gz
+  ln -s ${SOURCE} RPMBUILD/SOURCE/${PACKAGE}.tgz
 
   sh -x ${SPECUPDATE} ${PACKAGE} ${RPMVER} ${SCM_URL} ${WORKSPACE} ${RPMDIR} ${RPMREL} ${WORKSPACE}/${SPECFILE}
 

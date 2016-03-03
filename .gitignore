@@ -1,6 +1,5 @@
 .deps
 .libs
-# Makefile.in
 *.o
 *.lo
 *.la
@@ -10,11 +9,9 @@
 *.gcda
 *.gcno
 *~
-TAGS
-build_failed
-RPMBUILD
 
 # /autotools/depcomp
+# Makefile.in
 # /autotools/install-sh
 # /autotools/ltmain.sh
 # /autotools/missing
@@ -106,3 +103,16 @@ RPMBUILD
 /tests/lustre_fs/*.log
 /tests/posix_fs/*.log
 /web_gui/Makefile
+RPMBUILD
+TAGS
+build_failed
+robinhood-3.0.tgz
+src/common/.dirstamp
+src/include/db_schema.h
+src/robinhood/rbh-undelete
+src/tests/create_nostripe
+src/tests/test_confparam
+src/tests/test_forcestripe
+src/tests/test_params
+src/tests/test_parse
+src/tests/test_uidgidcache

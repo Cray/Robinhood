@@ -1,7 +1,7 @@
 #xyr build defines
 %define _xyr_package_name       robinhood
-%define _xyr_package_source     robinhood.tar.gz
-%define _xyr_package_version    3.0
+%define _xyr_package_source     robinhood.tgz
+%define _xyr_package_version    1.0
 %define _xyr_build_number       1
 %define _xyr_pkg_url            http://es-gerrit.xyus.xyratex.com:8080/robinhood
 %define _xyr_svn_version        0
@@ -60,7 +60,7 @@ Prefix: %{_prefix}
 # License: CeCILL-C
 Group: Applications/System
 # ggjjggjjUrl: http://robinhood.sourceforge.net
-#Source0: robinhood-%{version}.tar.gz
+#Source0: robinhood-%{version}.tgz
 #BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
@@ -123,7 +123,7 @@ Release: %_xyr_build_number
 Lustre and Posix tests for Robinhood.
 
 %prep
-%setup -q -n robinhood-%{version}
+%setup -q -n %{name}
 
 %build
 ./configure  %{?configure_flags:configure_flags} \
