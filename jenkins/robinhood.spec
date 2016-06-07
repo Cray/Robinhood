@@ -19,9 +19,6 @@ Source0:    %_xyr_package_source
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 # You probably want to change this.
 ExclusiveArch:  x86_64
-# %define with_lhsm 1
-# %define with_lustre 1
-
 
 # End Seagate meta information
 
@@ -54,14 +51,14 @@ Prefix: %{_prefix}
 %endif
 %endif
 
-Release: 0.alpha2%{?config_dependant}%{?dist}
+# Release: 0.alpha2%{?config_dependant}%{?dist}
 
 # Summary: Robinhood - Policy engine and reporting tool for large filesystems
 # License: CeCILL-C
 Group: Applications/System
 # Url: http://robinhood.sourceforge.net
-#Source0: robinhood-%{version}.tar.gz
-#BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+
+
 BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
 BuildRequires: mailx
@@ -88,7 +85,7 @@ Generated using options:
 
 Summary: Robinhood Policy Engine for Lustre filesystems
 Group: Applications/System
-Requires: %{lpackage} >= %{lversion}
+Requires: lustre-client >= %{lversion}
 Conflicts: robinhood-posix
 Provides: robinhood = %{version}-%{release}
 Obsoletes: robinhood-tmpfs < 3.0, robinhood-tmpfs-lustre < 3.0
