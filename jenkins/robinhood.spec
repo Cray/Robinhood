@@ -169,6 +169,7 @@ Annex tools for robinhood.
 %setup -q -n %{name}
 
 %build
+./autogen.sh
 ./configure  %{?configure_flags:configure_flags} \
         --mandir=%{_mandir} \
         --libdir=%{_libdir}
