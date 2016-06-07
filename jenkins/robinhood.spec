@@ -66,7 +66,7 @@ BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
 BuildRequires: mailx
 %if %{with lustre}
-BuildRequires: %{lpackage} >= %{lversion}
+BuildRequires:  lustre-client >= %{lversion}
 %endif
 %if %{with mysql}
 BuildRequires: /usr/include/mysql/mysql.h
