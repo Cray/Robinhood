@@ -62,6 +62,10 @@ Group: Applications/System
 BuildRequires: glib2-devel >= 2.16
 BuildRequires: libattr-devel
 BuildRequires: mailx
+BuildRequires: automake
+BuildRequires: autoconf
+BuildRequires: libtool
+BuildRequires: autogen
 %if %{with lustre}
 BuildRequires:  lustre-client >= %{lversion}
 %endif
