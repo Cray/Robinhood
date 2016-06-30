@@ -197,7 +197,10 @@ Annex tools for robinhood.
 
 
 %build
-./configure %{lswitch} %{?configure_flags} --mandir=%{_mandir} --libdir=%{_libdir}
+./configure @ac_configure_args@ %{?configure_flags:configure_flags} \
+        --mandir=%{_mandir} \
+        --libdir=%{_libdir} \
+        --disable-unit-tests
 make %{?_smp_mflags}
 
 %install

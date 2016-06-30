@@ -6,6 +6,10 @@ endif
 
 SUBDIRS += robinhood tools tests
 
+if ENABLE_UNIT_TESTS
+SUBDIRS += CUnit ut
+endif
+
 indent:
 	for d in $(SUBDIRS); do 	\
 		make -C $$d indent ; 	\

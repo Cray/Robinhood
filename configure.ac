@@ -128,6 +128,14 @@ AX_ENABLE_FLAG([gprof], [test only: add gprof info to the binaries], [-g -pg])
 AX_ENABLE_FLAG([gcov], [test only: add gcov info to the binaries], [--coverage])
 AX_VALGRIND_CHECK
 
+# unit tests flag
+AC_ARG_ENABLE([unit-tests],
+        [AS_HELP_STRING([--disable-unit-tests], [disable unit tests])],
+        [], [enable_unit_tests=yes]
+)
+AM_CONDITIONAL([ENABLE_UNIT_TESTS],
+               [test "x$enable_unit_tests" = xyes])
+
 # behavior flags
 AX_DISABLE_FLAG([atfunc], [Don't use 'at' functions for scanning], [-D_NO_AT_FUNC])
 
@@ -475,6 +483,35 @@ AC_SUBST(LIBDIR)
 
 # for exporting to Makefile.in
 AC_SUBST(ac_configure_args)
+
+AC_CONFIG_FILES([Makefile
+         src/Makefile
+         src/include/Makefile
+         src/common/Makefile
+         src/cfg_parsing/Makefile
+         src/list_mgr/Makefile
+         src/entry_processor/Makefile
+         src/fs_scan/Makefile
+         src/chglog_reader/Makefile
+         src/modules/Makefile
+         src/policies/Makefile
+         src/robinhood/Makefile
+         src/tools/Makefile
+         src/tests/Makefile
+         src/ut/Makefile
+         scripts/Makefile
+         scripts/robinhood.init
+         scripts/robinhood.init.sles
+         scripts/sysconfig_robinhood
+         scripts/ld.so.robinhood.conf
+         scripts/rbh_cksum.sh
+         tests/Makefile
+         web_gui/Makefile
+         man/Makefile
+         robinhood.spec
+         doc/doxygen/doxygen.cfg])
+
+AC_CONFIG_SUBDIRS([src/CUnit])
 
 AC_OUTPUT
 
