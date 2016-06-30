@@ -26,6 +26,7 @@ TAGS
 /autotools/m4/ltversion.m4
 /autotools/m4/lt~obsolete.m4
 /autotools/ylwrap
+/autotools/test-driver
 /autom4te.cache
 /config.status
 /libtool
@@ -42,12 +43,15 @@ TAGS
 /scripts/robinhood.init
 /scripts/robinhood.init.sles
 /scripts/sysconfig_robinhood
+/scripts/ld.so.robinhood.conf
+/scripts/rbh_cksum.sh
 /src/Makefile
 /src/todo
 /src/robinhood/todo
 /src/cfg_parsing/Makefile
 /src/chglog_reader/Makefile
 /src/common/Makefile
+/src/common/.dirstamp
 /src/entry_processor/Makefile
 /src/fs_scan/Makefile
 /src/include/Makefile
@@ -56,6 +60,8 @@ TAGS
 /src/include/stamp-h1
 /src/list_mgr/Makefile
 /src/logs/Makefile
+/src/modules/Makefile
+/src/policies/Makefile
 /src/policy_matching/Makefile
 /src/policy_modules/Makefile
 /src/policy_modules/hsm_remove/Makefile
@@ -75,6 +81,7 @@ TAGS
 /web_gui/Makefile
 /src/tools/Makefile
 /src/tools/gen_lov_objid
+/src/tools/lhsmtool_cmd
 /src/tools/read_lovea
 /src/tools/set_lovea
 /src/tools/ost_fids_remap

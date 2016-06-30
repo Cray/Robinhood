@@ -80,7 +80,7 @@ large file systems with millions of entries and petabytes of data.
 
 With support for: %{?with_lustre:Lustre} %{?with_backup:Backup} %{?with_shook:shook}
 
-Generated using options: 
+Generated using options:
 
 %if %{with lustre}
 # Package robinhood-lustre includes robinhood for Lustre filesystem
@@ -170,7 +170,7 @@ Annex tools for robinhood.
 
 %build
 ./autogen.sh
-./configure  %{?configure_flags:configure_flags} \
+./configure  --disable-unit-tests %{?configure_flags:configure_flags} \
         --mandir=%{_mandir} \
         --libdir=%{_libdir}
 make %{?_smp_mflags}

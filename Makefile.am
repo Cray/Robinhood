@@ -93,6 +93,24 @@ EXTRA_DIST= robinhood.spec robinhood.spec.in \
 	ChangeLog \
 	man/*.1
 
+if ENABLE_UNIT_TESTS
+EXTRA_DIST += src/CUnit/CUnit/Sources/Win \
+	src/CUnit/doc \
+	src/CUnit/Man \
+	src/CUnit/Share
+
+TEST_COMMAND = ./src/ut/ut 2> /dev/null
+
+.PHONY: test
+test: __test
+	@$(TEST_COMMAND)
+
+.PHONY: __test
+__test: src/ut/ut
+else
+.PHONY: test
+test:
+endif
 
 
 #	goodies/vim/robinhood.vim cfg_templates/example.conf
