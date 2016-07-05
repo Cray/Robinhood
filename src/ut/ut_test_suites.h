@@ -21,11 +21,14 @@
  * @attention To be included in main unit test runner file only!
  */
 
+extern CU_TestInfo changelog_suite[];
+
 /**
  * Test suites list.
  */
 CU_SuiteInfo suites[] = {
-	CU_SUITE_INFO_NULL,
+    {"changelog_suite", NULL, NULL, NULL, NULL, changelog_suite},
+    CU_SUITE_INFO_NULL,
 };
 
 #endif

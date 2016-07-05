@@ -29,7 +29,8 @@ if USE_MYSQL_DB
 else
   rpmbuild_opt += --with sqlite
   dbname=sqlite
-  dbversion=`rpm -qa "sqlite-devel*" --qf "%{Version}\n" | tail -1 | cut -d "." -f 1-2`
+  dbversion=`rpm -qa "sqlite-devel*" --qf "%{Version}\n" | tail -1 | \
+	cut -d "." -f 1-2`
 endif
 
 if LUSTRE_HSM
@@ -52,10 +53,12 @@ new: clean all
 
 mydist:
 	umask 022; \
-	TAR_OPTIONS='--owner=0 --group=0 --numeric-owner --mode=u+rw,go+r-ws' $(MAKE) dist-gzip
+	TAR_OPTIONS='--owner=0 --group=0 --numeric-owner --mode=u+rw,go+r-ws' \
+	$(MAKE) dist-gzip
 
 rpms: robinhood.spec mydist
-	mkdir -p $(rpm_dir)/BUILD $(rpm_dir)/SPECS $(rpm_dir)/SRPMS $(rpm_dir)/RPMS
+	mkdir -p $(rpm_dir)/BUILD $(rpm_dir)/SPECS $(rpm_dir)/SRPMS \
+		$(rpm_dir)/RPMS
 	rpmbuild $(rpmbuild_opt) --define="_topdir $(rpm_dir)" \
 		--define="dbversion $(dbversion)" --define="_prefix $(prefix)" \
 		--define="configure_flags @ac_configure_args@" \
@@ -76,10 +79,12 @@ srpm: robinhood.spec mydist
 	rpmbuild --without lustre --define="_topdir $(rpm_dir)" -bs robinhood.spec
 
 cppcheck:
-	cppcheck -j12 -v --force --enable=all -I`pwd`/src/include -DHAVE_CONFIG_H @PURPOSE_CFLAGS@ @DB_CFLAGS@ src/
+	cppcheck -j12 -v --force --enable=all -I`pwd`/src/include \
+		-DHAVE_CONFIG_H @PURPOSE_CFLAGS@ @DB_CFLAGS@ src/
 
 lcov:
-	lcov --capture --directory . --output-file rbh_cov.info && genhtml rbh_cov.info --output-directory rbh_cov
+	lcov --capture --directory . --output-file rbh_cov.info && \
+		genhtml rbh_cov.info --output-directory rbh_cov
 mans:
 	chmod +x ./scripts/make_mans.sh && ./scripts/make_mans.sh
 
@@ -106,7 +111,7 @@ test: __test
 	@$(TEST_COMMAND)
 
 .PHONY: __test
-__test: src/ut/ut
+__test: all
 else
 .PHONY: test
 test:

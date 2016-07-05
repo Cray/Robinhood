@@ -47,85 +47,6 @@
 /* for logs */
 #define CHGLOG_TAG  "ChangeLog"
 
-/* reader thread info, one per MDT */
-typedef struct reader_thr_info_t {
-    /** reader thread index */
-    unsigned int thr_index;
-
-    /** thread id */
-    pthread_t thr_id;
-
-    /** open information */
-    char *mdtdevice;
-    int flags;
-
-    /** nbr of records read by this thread */
-    unsigned long long nb_read;
-
-    /** number of records of interest (ie. not MARK, IOCTL, ...) */
-    unsigned long long interesting_records;
-
-    /** number of suppressed/merged records */
-    unsigned long long suppressed_records;
-
-    /** time when the last line was read */
-    time_t last_read_time;
-
-    /** time of the last read record */
-    struct timeval last_read_record_time;
-
-    /** last read record id */
-    unsigned long long last_read_record;
-
-    /** last record id committed to database */
-    unsigned long long last_committed_record;
-
-    /** last record id cleared with changelog */
-    unsigned long long last_cleared_record;
-
-    /** last record pushed to the pipeline */
-    unsigned long long last_pushed;
-
-    /* number of times the changelog has been reopened */
-    unsigned int nb_reopen;
-
-    /** thread was asked to stop */
-    unsigned int force_stop:1;
-
-    /** log handler */
-    void *chglog_hdlr;
-
-    /** Queue of pending changelogs to push to the pipeline. */
-    struct rh_list_head op_queue;
-    unsigned int op_queue_count;
-
-    /** Store the ops for easier access. Each element in the hash
-     * table is also in the op_queue list. This hash table doesn't
-     * need a lock per slot since there is only one reader. The
-     * slot counts won't be used either. */
-    struct id_hash *id_hash;
-
-    ull_t cl_counters[CL_LAST]; /* since program start time */
-    ull_t cl_reported[CL_LAST]; /* last reported stat (for incremental diff) */
-    time_t last_report;
-
-    /* to compute relative changelog speed
-     * (timeframe of read changelog since the last report) */
-    struct timeval last_report_record_time;
-    unsigned long long last_report_record_id;
-    unsigned int last_reopen;
-
-    /** On pre LU-1331 versions of Lustre, a CL_RENAME is always
-     * followed by a CL_EXT, however these may not be
-     * contiguous. Temporarily store the CL_RENAME changelog until we
-     * get the CL_EXT. */
-    CL_REC_TYPE *cl_rename;
-
-} reader_thr_info_t;
-
-/* Number of entries in each readers' op hash table. */
-#define ID_CHGLOG_HASH_SIZE 7919
-
 extern chglog_reader_config_t cl_reader_config;
 static run_flags_t behavior_flags = 0;
 
@@ -777,7 +698,7 @@ static CL_REC_TYPE *create_fake_rename_record(const reader_thr_info_t *p_info,
 /**
  * This handles a single log record.
  */
-static int process_log_rec(reader_thr_info_t *p_info, CL_REC_TYPE *p_rec)
+int process_log_rec( reader_thr_info_t * p_info, CL_REC_TYPE * p_rec )
 {
     unsigned int opnum;
 
@@ -841,9 +762,10 @@ static int process_log_rec(reader_thr_info_t *p_info, CL_REC_TYPE *p_rec)
                 cl_reader_config.mds_has_lu1331 = true;
             }
 
-            if (!FID_IS_ZERO(&p_rec->cr_tfid)) {
-                CL_REC_TYPE *unlink;
-                unsigned int insert_flags;
+            if (!FID_IS_ZERO(&p_rec->cr_tfid))
+            {
+                CL_REC_TYPE * unlink;
+                unsigned int insert_flags = 0;
 
                 unlink = create_fake_unlink_record(p_info,
                                                    p_rec, &insert_flags);
@@ -923,8 +845,8 @@ static int process_log_rec(reader_thr_info_t *p_info, CL_REC_TYPE *p_rec)
          * e.g. "mv a b" and b exists => rm b.
          */
         if (!FID_IS_ZERO(&p_rec->cr_tfid)) {
-            CL_REC_TYPE *unlink;
-            unsigned int insert_flags;
+            CL_REC_TYPE * unlink;
+            unsigned int insert_flags = 0;
 
             /* Push an unlink. */
             unlink = create_fake_unlink_record(p_info, p_rec, &insert_flags);

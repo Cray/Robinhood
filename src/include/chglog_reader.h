@@ -28,10 +28,15 @@
 #include "config_parsing.h"
 #include "rbh_const.h"
 #include "list_mgr.h"
+#include "list.h"
+#include "lustre_extended_types.h"
 #include <stdbool.h>
 
 #define MDT_NAME_MAX  32
 #define READER_ID_MAX 16
+
+/* Number of entries in each readers' op hash table. */
+#define ID_CHGLOG_HASH_SIZE 7919
 
 typedef struct mdt_def_t {
     char mdt_name[MDT_NAME_MAX];
@@ -91,6 +96,96 @@ int cl_reader_store_stats(lmgr_t *lmgr);
 
 /** config handlers */
 extern mod_cfg_funcs_t cl_reader_cfg_hdlr;
+
+/**
+ * \addtogroup CHANGE_LOGS_UT
+ * @{
+ */
+
+/* reader thread info, one per MDT */
+typedef struct reader_thr_info_t
+{
+    /** reader thread index */
+    unsigned int thr_index;
+
+    /** thread id */
+    pthread_t thr_id;
+
+    /** open information */
+    char *mdtdevice;
+    int flags;
+
+    /** nbr of records read by this thread */
+    unsigned long long nb_read;
+
+    /** number of records of interest (ie. not MARK, IOCTL, ...) */
+    unsigned long long interesting_records;
+
+    /** number of suppressed/merged records */
+    unsigned long long suppressed_records;
+
+    /** time when the last line was read */
+    time_t  last_read_time;
+
+    /** time of the last read record */
+    struct timeval last_read_record_time;
+
+    /** last read record id */
+    unsigned long long last_read_record;
+
+    /** last record id committed to database */
+    unsigned long long last_committed_record;
+
+    /** last record id cleared with changelog */
+    unsigned long long last_cleared_record;
+
+    /** last record pushed to the pipeline */
+    unsigned long long last_pushed;
+
+    /* number of times the changelog has been reopened */
+    unsigned int nb_reopen;
+
+    /** thread was asked to stop */
+    unsigned int force_stop : 1;
+
+    /** log handler */
+    void * chglog_hdlr;
+
+    /** Queue of pending changelogs to push to the pipeline. */
+    struct rh_list_head op_queue;
+    unsigned int op_queue_count;
+
+    /** Store the ops for easier access. Each element in the hash
+     * table is also in the op_queue list. This hash table doesn't
+     * need a lock per slot since there is only one reader. The
+     * slot counts won't be used either. */
+    struct id_hash * id_hash;
+
+    unsigned long long cl_counters[CL_LAST]; /* since program start time */
+    /* last reported stat (for incremental diff) */
+    unsigned long long cl_reported[CL_LAST];
+    time_t last_report;
+
+    /* to compute relative changelog speed (timeframe of read changelog since
+     * the last report)
+     **/
+    struct timeval last_report_record_time;
+    unsigned long long last_report_record_id;
+    unsigned int last_reopen;
+
+    /** On pre LU-1331 versions of Lustre, a CL_RENAME is always
+     * followed by a CL_EXT, however these may not be
+     * contiguous. Temporarily store the CL_RENAME changelog until we
+     * get the CL_EXT. */
+    CL_REC_TYPE * cl_rename;
+
+} reader_thr_info_t;
+
+/**
+ * This handles a single log record.
+ */
+int process_log_rec( reader_thr_info_t * p_info, CL_REC_TYPE * p_rec );
+/** @} */
 
 #endif
 

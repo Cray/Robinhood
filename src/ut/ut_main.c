@@ -26,33 +26,33 @@ void add_tests(void);
 
 int main(int argc, char *argv[])
 {
-	int      rc;
-	unsigned n_failures;
+    int      rc;
+    unsigned n_failures;
 
-	/* Tests setup */
-	if (CU_initialize_registry() != CUE_SUCCESS) {
-		printf("Failed to initialise Test registry.\n");
-		return -1;
-	}
+    /* Tests setup */
+    if (CU_initialize_registry() != CUE_SUCCESS) {
+        printf("Failed to initialise Test registry.\n");
+        return -1;
+    }
 
-	add_tests();
-	CU_basic_set_mode(CU_BRM_NORMAL);
-	CU_set_error_action(CUEA_IGNORE);
-	CU_basic_run_tests();
-	n_failures = CU_get_number_of_tests_failed();
-	rc = ((n_failures != 0) ? -2 : 0);
+    add_tests();
+    CU_basic_set_mode(CU_BRM_NORMAL);
+    CU_set_error_action(CUEA_IGNORE);
+    CU_basic_run_tests();
+    n_failures = CU_get_number_of_tests_failed();
+    rc = ((n_failures != 0) ? -2 : 0);
 
-	CU_cleanup_registry();
+    CU_cleanup_registry();
 
-	return rc;
+    return rc;
 }
 
 void add_tests()
 {
-	if (CU_register_suites(suites) != CUE_SUCCESS) {
-		printf("Suite registration failed: %s\n", CU_get_error_msg());
-		exit(-1);
-	}
+    if (CU_register_suites(suites) != CUE_SUCCESS) {
+        printf("Suite registration failed: %s\n", CU_get_error_msg());
+        exit(-1);
+    }
 
-	return;
+    return;
 }
