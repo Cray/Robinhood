@@ -683,6 +683,8 @@ VALGRIND_ENABLED
 VALGRIND_ENABLED_FALSE
 VALGRIND_ENABLED_TRUE
 VALGRIND
+DEBUG_BUILD_FALSE
+DEBUG_BUILD_TRUE
 DEBUG_PARSING_FALSE
 DEBUG_PARSING_TRUE
 GTHREAD2_LIBS
@@ -827,6 +829,7 @@ enable_largefile
 enable_strict
 enable_debug_db
 enable_debug_parsing
+enable_debug
 enable_debug_pipeline
 enable_debug_policies
 enable_debug_hash
@@ -1499,6 +1502,7 @@ Optional Features:
   --enable-strict         Compile with -Wall -Werror
   --enable-debug-db       enables debug traces for database operations
   --enable-debug-parsing  enables debug traces for configuration file parsing
+  --enable-debug          enables build with debug info
   --enable-debug-pipeline enables debug traces for entry processor pipeline
   --enable-debug-policies enables debug traces for entry processor pipeline
   --enable-debug-hash     enables debug traces internal hash tables
@@ -1510,7 +1514,7 @@ Optional Features:
   --enable-gprof          test only: add gprof info to the binaries
   --enable-gcov           test only: add gcov info to the binaries
   --enable-valgrind       Whether to enable Valgrind on the unit tests
-  --disable-unit-tests    disable unit tests
+  --enable-unit-tests     enables unit tests
   --disable-atfunc        Don't use 'at' functions for scanning
   --enable-fid2path-leading-slash
                           must be enabled if fid2path() returns a leading
@@ -14048,6 +14052,35 @@ fi
 
 
 
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking debug option" >&5
+$as_echo_n "checking debug option... " >&6; }
+	# Check whether --enable-debug was given.
+if test "${enable_debug+set}" = set; then :
+  enableval=$enable_debug; enable_debug=$enableval
+else
+  enable_debug='no'
+fi
+
+
+	if test "$enable_debug" == yes ; then
+		CFLAGS="$CFLAGS -g -O0"
+	    { $as_echo "$as_me:${as_lineno-$LINENO}: result: enabled" >&5
+$as_echo "enabled" >&6; }
+    else
+	    { $as_echo "$as_me:${as_lineno-$LINENO}: result: disabled" >&5
+$as_echo "disabled" >&6; }
+	fi
+
+ if test "x$enable_debug" == "xyes" ; then
+  DEBUG_BUILD_TRUE=
+  DEBUG_BUILD_FALSE='#'
+else
+  DEBUG_BUILD_TRUE='#'
+  DEBUG_BUILD_FALSE=
+fi
+
+
+
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking debug-pipeline option" >&5
 $as_echo_n "checking debug-pipeline option... " >&6; }
@@ -14472,15 +14505,28 @@ MOSTLYCLEANFILES += $(valgrind_log_files)
 
 
 # unit tests flag
-# Check whether --enable-unit-tests was given.
-if test "${enable_unit_tests+set}" = set; then :
-  enableval=$enable_unit_tests;
-else
-  enable_unit_tests=yes
 
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking unit-tests option" >&5
+$as_echo_n "checking unit-tests option... " >&6; }
+	# Check whether --enable-unit-tests was given.
+if test "${enable_unit_tests+set}" = set; then :
+  enableval=$enable_unit_tests; enable_unit_tests=$enableval
+else
+  enable_unit_tests='no'
 fi
 
- if test "x$enable_unit_tests" = xyes; then
+
+	if test "$enable_unit_tests" == yes ; then
+		CFLAGS="$CFLAGS -DUNIT_TESTS "
+	    { $as_echo "$as_me:${as_lineno-$LINENO}: result: enabled" >&5
+$as_echo "enabled" >&6; }
+    else
+	    { $as_echo "$as_me:${as_lineno-$LINENO}: result: disabled" >&5
+$as_echo "disabled" >&6; }
+	fi
+
+ if test "x$enable_unit_tests" == "xyes" ; then
   ENABLE_UNIT_TESTS_TRUE=
   ENABLE_UNIT_TESTS_FALSE='#'
 else
@@ -16175,7 +16221,8 @@ else
   getmntent_r=no
 fi
 
-test "$getmntent_r" = "yes" &&
+test "$getmntent_r" = "yes" && \
+
 $as_echo "#define HAVE_GETMNTENT_R 1" >>confdefs.h
 
  if test "$getmntent_r" = "no" ; then
@@ -16195,7 +16242,8 @@ else
   fallocate=no
 fi
 
-test "$fallocate" = "yes" &&
+test "$fallocate" = "yes" && \
+
 $as_echo "#define HAVE_FALLOCATE 1" >>confdefs.h
 
 
@@ -16449,6 +16497,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${DEBUG_PARSING_TRUE}" && test -z "${DEBUG_PARSING_FALSE}"; then
   as_fn_error $? "conditional \"DEBUG_PARSING\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${DEBUG_BUILD_TRUE}" && test -z "${DEBUG_BUILD_FALSE}"; then
+  as_fn_error $? "conditional \"DEBUG_BUILD\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${VALGRIND_ENABLED_TRUE}" && test -z "${VALGRIND_ENABLED_FALSE}"; then
