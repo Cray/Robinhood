@@ -38,6 +38,10 @@
 #define TEST_LUSTRE_FID_OID 400000
 #define TEST_LUSTRE_FID_SEQ 1
 
+static struct reader_thr_info_t thread_info;
+
+void changelog_test_init(void);
+void changelog_test_fini(void);
 
 #define UNIT_TEST(test_name)  \
     void test_name(void); \
@@ -48,9 +52,8 @@
 
 UNIT_TEST(process_log_rec_invalid_test)
 {
-    struct reader_thr_info_t thread_info;
-    CL_REC_TYPE              rec;
-    int                      rc;
+	CL_REC_TYPE rec;
+	int         rc;
 
     rec.cr_type = -1;
     rc = process_log_rec(&thread_info, &rec);
@@ -63,7 +66,6 @@ UNIT_TEST(process_log_rec_invalid_test)
 
 UNIT_TEST(process_log_rec_ignore_test)
 {
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE              rec;
     int                      rc;
 
@@ -80,16 +82,16 @@ UNIT_TEST(process_log_rec_ignore_test)
     CU_ASSERT_EQUAL(thread_info.interesting_records, 0);
 }
 
-static int process_log_rec_record_count(struct reader_thr_info_t *thread_info)
+static int process_log_rec_record_count(void)
 {
     int                  n_records = 0;
     int                  i;
     struct id_hash_slot *slot;
     entry_proc_op_t     *op;
 
-    for (i = 0; i < thread_info->id_hash->hash_size; ++i)
+    for (i = 0; i < thread_info.id_hash->hash_size; ++i)
     {
-        slot = thread_info->id_hash->slot + i;
+        slot = thread_info.id_hash->slot + i;
         rh_list_for_each_entry(op, &slot->list, id_hash_list)
             ++n_records;
     }
@@ -97,19 +99,19 @@ static int process_log_rec_record_count(struct reader_thr_info_t *thread_info)
     return n_records;
 }
 
-static void process_log_rec_queue_cleanup(struct reader_thr_info_t *thread_info)
+static void process_log_rec_queue_cleanup(void)
 {
-	entry_proc_op_t     *op;
+	entry_proc_op_t *op;
 
-	while(!rh_list_empty(&thread_info->op_queue)) {
-		op = rh_list_first_entry(&thread_info->op_queue,
+	while(!rh_list_empty(&thread_info.op_queue)) {
+		op = rh_list_first_entry(&thread_info.op_queue,
 					 entry_proc_op_t, list);
 		rh_list_del(&op->list);
 		rh_list_del(&op->id_hash_list);
 
 		EntryProcessor_Release(op);
 
-		thread_info->op_queue_count --;
+		thread_info.op_queue_count --;
 	}
 }
 
@@ -118,7 +120,6 @@ static void process_log_rec_queue_cleanup(struct reader_thr_info_t *thread_info)
 UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
 {
 #define TEST_SHORT_NAME "one_zero_tfid_test"
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
     int                      rc;
     int                      n_records;
@@ -134,11 +135,6 @@ UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
     rec = (CL_REC_TYPE*)MemAlloc(record_size);
     memset(rec, 0, record_size);
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
-
-    /* Initialise changelog reader thread information */
-    memset(&thread_info, 0, sizeof(thread_info));
-    rh_list_init(&thread_info.op_queue);
-    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
 
     rec->cr_type = CL_RENAME;
     rec->cr_flags = PROCESS_LOG_ONE_REC;
@@ -155,15 +151,10 @@ UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-    n_records = process_log_rec_record_count(&thread_info);
-    CU_ASSERT_EQUAL(n_records, 2);
+	n_records = process_log_rec_record_count();
+	CU_ASSERT_EQUAL(n_records, 2);
 
-    process_log_rec_queue_cleanup(&thread_info);
-    MemFree(rec);
-
-    /* Free hash */
-    MemFree(thread_info.id_hash);
-    thread_info.id_hash = NULL;
+	MemFree(rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -172,7 +163,6 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
 {
 #define TEST_SHORT_NAME "non_zero_tfid_test"
 
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
     int                      rc;
     int                      n_records;
@@ -188,11 +178,6 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
     rec = (CL_REC_TYPE*)MemAlloc(record_size);
     memset(rec, 0, record_size);
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
-
-    /* Initialise changelog reader thread information */
-    memset(&thread_info, 0, sizeof(thread_info));
-    rh_list_init(&thread_info.op_queue);
-    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
 
     rec->cr_type = CL_RENAME;
     rec->cr_flags = PROCESS_LOG_ONE_REC;
@@ -209,15 +194,10 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-    n_records = process_log_rec_record_count(&thread_info);
+    n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 3);
 
-    process_log_rec_queue_cleanup(&thread_info);
-    MemFree(rec);
-
-    /* Free hash */
-    MemFree(thread_info.id_hash);
-    thread_info.id_hash = NULL;
+	MemFree(rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -226,7 +206,6 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
 UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
 {
 #define TEST_SHORT_NAME "ext_rec_one_zero_tfid_test"
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
     CL_REC_TYPE             *ext_rec;
     int                      rc;
@@ -239,11 +218,6 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     rec = (CL_REC_TYPE*)MemAlloc(sizeof(CL_REC_TYPE));
 #endif
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
-
-    /* Initialise changelog reader thread information */
-    memset(&thread_info, 0, sizeof(thread_info));
-    rh_list_init(&thread_info.op_queue);
-    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
 
     rec->cr_type = CL_RENAME;
     rec->cr_flags = 0;
@@ -258,7 +232,7 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-    n_records = process_log_rec_record_count(&thread_info);
+    n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 0);
 
     ext_rec = (CL_REC_TYPE*)MemAlloc(sizeof(CL_REC_TYPE));
@@ -275,16 +249,11 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 2);
 
-    n_records = process_log_rec_record_count(&thread_info);
-    CU_ASSERT_EQUAL(n_records, 2);
+	n_records = process_log_rec_record_count();
+	CU_ASSERT_EQUAL(n_records, 2);
 
-    process_log_rec_queue_cleanup(&thread_info);
-    MemFree(rec);
-    MemFree(ext_rec);
-
-    /* Free hash */
-    MemFree(thread_info.id_hash);
-    thread_info.id_hash = NULL;
+	MemFree(rec);
+	MemFree(ext_rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -292,7 +261,6 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
 UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
 {
 #define TEST_SHORT_NAME "ext_rec_non_zero_tfid_test"
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
     CL_REC_TYPE             *ext_rec;
     int                      rc;
@@ -309,11 +277,6 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
 #endif
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
 
-    /* Initialise changelog reader thread information */
-    memset(&thread_info, 0, sizeof(thread_info));
-    rh_list_init(&thread_info.op_queue);
-    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
-
     rec->cr_type = CL_RENAME;
     rec->cr_flags = 0;
     rec->cr_tfid.f_oid = TEST_LUSTRE_FID_OID;
@@ -327,7 +290,7 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-    n_records = process_log_rec_record_count(&thread_info);
+    n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 0);
 
     record_size = sizeof(CL_REC_TYPE) +
@@ -354,16 +317,11 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 2);
 
-    n_records = process_log_rec_record_count(&thread_info);
+    n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 3);
 
-    process_log_rec_queue_cleanup(&thread_info);
     MemFree(rec);
     MemFree(ext_rec);
-
-    /* Free hash */
-    MemFree(thread_info.id_hash);
-    thread_info.id_hash = NULL;
 
 #undef TEST_SHORT_NAME
 }
@@ -371,8 +329,6 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
 UNIT_TEST(process_log_rec_unlink)
 {
 #define TEST_SHORT_NAME "unlink"
-
-    struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
     int                      rc;
     int                      n_records;
@@ -388,11 +344,6 @@ UNIT_TEST(process_log_rec_unlink)
     memset(rec, 0, record_size);
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
 
-    /* Initialise changelog reader thread information */
-    memset(&thread_info, 0, sizeof(thread_info));
-    rh_list_init(&thread_info.op_queue);
-    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
-
     rec->cr_type = CL_UNLINK;
     rec->cr_tfid.f_oid = TEST_LUSTRE_FID_OID;
     rec->cr_tfid.f_seq = TEST_LUSTRE_FID_SEQ;
@@ -405,16 +356,26 @@ UNIT_TEST(process_log_rec_unlink)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-    n_records = process_log_rec_record_count(&thread_info);
+    n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 1);
 
-    process_log_rec_queue_cleanup(&thread_info);
     MemFree(rec);
 
-    /* Free hash */
-    MemFree(thread_info.id_hash);
-    thread_info.id_hash = NULL;
 #undef TEST_SHORT_NAME
+}
+
+void changelog_test_init(void)
+{
+	memset(&thread_info, 0, sizeof(thread_info));
+	rh_list_init(&thread_info.op_queue);
+	thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
+}
+
+void changelog_test_fini(void)
+{
+	process_log_rec_queue_cleanup();
+	MemFree(thread_info.id_hash);
+	memset(&thread_info, 0, sizeof(thread_info));
 }
 
 CU_TestInfo changelog_suite[] = {
