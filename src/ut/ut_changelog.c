@@ -97,6 +97,22 @@ static int process_log_rec_record_count(struct reader_thr_info_t *thread_info)
     return n_records;
 }
 
+static void process_log_rec_queue_cleanup(struct reader_thr_info_t *thread_info)
+{
+	entry_proc_op_t     *op;
+
+	while(!rh_list_empty(&thread_info->op_queue)) {
+		op = rh_list_first_entry(&thread_info->op_queue,
+					 entry_proc_op_t, list);
+		rh_list_del(&op->list);
+		rh_list_del(&op->id_hash_list);
+
+		EntryProcessor_Release(op);
+
+		thread_info->op_queue_count --;
+	}
+}
+
 #if defined(HAVE_CHANGELOG_EXTEND_REC) || defined(HAVE_FLEX_CL)
 
 UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
@@ -141,6 +157,9 @@ UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
 
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 2);
+
+    process_log_rec_queue_cleanup(&thread_info);
+    MemFree(rec);
 
     /* Free hash */
     MemFree(thread_info.id_hash);
@@ -193,6 +212,9 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 3);
 
+    process_log_rec_queue_cleanup(&thread_info);
+    MemFree(rec);
+
     /* Free hash */
     MemFree(thread_info.id_hash);
     thread_info.id_hash = NULL;
@@ -211,10 +233,10 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     int                      n_records;
 
 #if defined(HAVE_FLEX_CL)
-    rec = (CL_REC_TYPE*)malloc(sizeof(CL_REC_TYPE) +
-                               sizeof(struct changelog_ext_rename));
+    rec = (CL_REC_TYPE*)MemAlloc(sizeof(CL_REC_TYPE) +
+                                 sizeof(struct changelog_ext_rename));
 #else
-    rec = (CL_REC_TYPE*)malloc(sizeof(CL_REC_TYPE));
+    rec = (CL_REC_TYPE*)MemAlloc(sizeof(CL_REC_TYPE));
 #endif
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
 
@@ -239,7 +261,7 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 0);
 
-    ext_rec = (CL_REC_TYPE*)malloc(sizeof(CL_REC_TYPE));
+    ext_rec = (CL_REC_TYPE*)MemAlloc(sizeof(CL_REC_TYPE));
     CU_ASSERT_NOT_EQUAL_FATAL(ext_rec, NULL);
     memset(ext_rec, 0, sizeof(*ext_rec));
 
@@ -255,6 +277,10 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
 
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 2);
+
+    process_log_rec_queue_cleanup(&thread_info);
+    MemFree(rec);
+    MemFree(ext_rec);
 
     /* Free hash */
     MemFree(thread_info.id_hash);
@@ -331,6 +357,10 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 3);
 
+    process_log_rec_queue_cleanup(&thread_info);
+    MemFree(rec);
+    MemFree(ext_rec);
+
     /* Free hash */
     MemFree(thread_info.id_hash);
     thread_info.id_hash = NULL;
@@ -340,7 +370,7 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
 
 UNIT_TEST(process_log_rec_unlink)
 {
-#define TEST_SHORT_NAME "non_zero_tfid_test"
+#define TEST_SHORT_NAME "unlink"
 
     struct reader_thr_info_t thread_info;
     CL_REC_TYPE             *rec;
@@ -353,7 +383,7 @@ UNIT_TEST(process_log_rec_unlink)
 #if defined(HAVE_FLEX_CL)
                   sizeof(struct changelog_ext_rename) +
 #endif
-                  strlen(target_name) + 2;
+                  strlen(target_name) + 1;
     rec = (CL_REC_TYPE*)MemAlloc(record_size);
     memset(rec, 0, record_size);
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
@@ -368,7 +398,6 @@ UNIT_TEST(process_log_rec_unlink)
     rec->cr_tfid.f_seq = TEST_LUSTRE_FID_SEQ;
 
     sprintf(changelog_rec_name(rec), "%s", target_name);
-
     rec->cr_namelen = strlen(target_name);
 
     rc = process_log_rec(&thread_info, rec);
@@ -379,10 +408,12 @@ UNIT_TEST(process_log_rec_unlink)
     n_records = process_log_rec_record_count(&thread_info);
     CU_ASSERT_EQUAL(n_records, 1);
 
+    process_log_rec_queue_cleanup(&thread_info);
+    MemFree(rec);
+
     /* Free hash */
     MemFree(thread_info.id_hash);
     thread_info.id_hash = NULL;
-
 #undef TEST_SHORT_NAME
 }
 
