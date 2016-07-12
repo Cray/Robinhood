@@ -23,12 +23,16 @@
 
 extern CU_TestInfo changelog_suite[];
 
+void changelog_test_init(void);
+void changelog_test_fini(void);
+
 /**
  * Test suites list.
  */
 CU_SuiteInfo suites[] = {
-    {"changelog_suite", NULL, NULL, NULL, NULL, changelog_suite},
-    CU_SUITE_INFO_NULL,
+	{"changelog_suite", NULL, NULL, changelog_test_init, changelog_test_fini,
+        changelog_suite},
+	CU_SUITE_INFO_NULL,
 };
 
 #endif
