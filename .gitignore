@@ -87,6 +87,9 @@ RPMBUILD
 /src/tests/create_nostripe
 /src/tests/test_forcestripe
 /src/backend_ext/Makefile
+/src/ut_db/Makefile
+/src/ut_db/st_lmgr
+/src/ut_db/ut_db
 /tests/Makefile
 /web_gui/Makefile
 /src/tools/Makefile
