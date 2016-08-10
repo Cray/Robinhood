@@ -437,6 +437,7 @@ AC_CONFIG_FILES([Makefile
          src/tools/Makefile
          src/tests/Makefile
          src/ut/Makefile
+         src/ut_db/Makefile
          scripts/Makefile
          scripts/robinhood.init
          scripts/robinhood.init.sles

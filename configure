@@ -16350,7 +16350,7 @@ _ACEOF
 # for exporting to spec file
 
 
-ac_config_files="$ac_config_files Makefile src/Makefile src/include/Makefile src/common/Makefile src/cfg_parsing/Makefile src/list_mgr/Makefile src/entry_processor/Makefile src/fs_scan/Makefile src/chglog_reader/Makefile src/modules/Makefile src/policies/Makefile src/robinhood/Makefile src/tools/Makefile src/tests/Makefile src/ut/Makefile scripts/Makefile scripts/robinhood.init scripts/robinhood.init.sles scripts/sysconfig_robinhood scripts/ld.so.robinhood.conf scripts/rbh_cksum.sh tests/Makefile web_gui/Makefile man/Makefile robinhood.spec doc/doxygen/doxygen.cfg"
+ac_config_files="$ac_config_files Makefile src/Makefile src/include/Makefile src/common/Makefile src/cfg_parsing/Makefile src/list_mgr/Makefile src/entry_processor/Makefile src/fs_scan/Makefile src/chglog_reader/Makefile src/modules/Makefile src/policies/Makefile src/robinhood/Makefile src/tools/Makefile src/tests/Makefile src/ut/Makefile src/ut_db/Makefile scripts/Makefile scripts/robinhood.init scripts/robinhood.init.sles scripts/sysconfig_robinhood scripts/ld.so.robinhood.conf scripts/rbh_cksum.sh tests/Makefile web_gui/Makefile man/Makefile robinhood.spec doc/doxygen/doxygen.cfg"
 
 
 
@@ -17462,6 +17462,7 @@ do
     "src/tools/Makefile") CONFIG_FILES="$CONFIG_FILES src/tools/Makefile" ;;
     "src/tests/Makefile") CONFIG_FILES="$CONFIG_FILES src/tests/Makefile" ;;
     "src/ut/Makefile") CONFIG_FILES="$CONFIG_FILES src/ut/Makefile" ;;
+    "src/ut_db/Makefile") CONFIG_FILES="$CONFIG_FILES src/ut_db/Makefile" ;;
     "scripts/Makefile") CONFIG_FILES="$CONFIG_FILES scripts/Makefile" ;;
     "scripts/robinhood.init") CONFIG_FILES="$CONFIG_FILES scripts/robinhood.init" ;;
     "scripts/robinhood.init.sles") CONFIG_FILES="$CONFIG_FILES scripts/robinhood.init.sles" ;;
