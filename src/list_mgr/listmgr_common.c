@@ -26,6 +26,8 @@
 #include "xplatform_print.h"
 #include <stdio.h>
 
+volatile bool lmgr_cancel_retry = false;
+
 void printdbtype(db_conn_t *pconn, GString *str, db_type_e type,
                  const db_type_u *value_ptr)
 {
@@ -2064,7 +2066,8 @@ out_free:
 
 
 /** manage delayed retry of retryable errors
- * \return != 0 if the transaction must be restarted
+ * \return 1 if the transaction must be restarted
+ * \return 2 if transaction must be cancelled
  */
 int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
 {
@@ -2097,6 +2100,10 @@ int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
         }
         return 0;
     }
+
+    /* Got TERM signal, must stop transactions and exit. */
+    if (lmgr_cancel_retry)
+        return 2;
 
     /* transaction is about to be restarted,
      * sleep for a given time */
@@ -2157,20 +2164,23 @@ bool lmgr_batch_compat(attr_mask_t m1, attr_mask_t m2)
     return true;
 }
 
-int parse_entry_id(lmgr_t *p_mgr, const char *str, PK_PARG_T p_pk, entry_id_t *p_id)
+int parse_entry_id(lmgr_t *p_mgr, const char *str, PK_PARG_T p_pk,
+                   entry_id_t *p_id)
 {
     int rc;
 
     if (sscanf(str, SPK, p_pk) != 1)
     {
-        DisplayLog(LVL_MAJOR, LISTMGR_TAG, "Unexpected format for database key: '%s'",
+        DisplayLog(LVL_MAJOR, LISTMGR_TAG,
+                   "Unexpected format for database key: '%s'",
                    str);
         return DB_INVALID_ARG;
     }
 
     rc = pk2entry_id(p_mgr, p_pk, p_id);
     if (rc)
-        DisplayLog(LVL_MAJOR, LISTMGR_TAG, "Unexpected format for database key: "DPK, p_pk);
+        DisplayLog(LVL_MAJOR, LISTMGR_TAG,
+                   "Unexpected format for database key: "DPK, p_pk);
     return rc;
 }
 
