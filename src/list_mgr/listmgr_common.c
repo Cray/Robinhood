@@ -26,6 +26,8 @@
 #include "xplatform_print.h"
 #include <stdio.h>
 
+volatile bool lmgr_cancel_retry = false;
+
 void printdbtype(lmgr_t *p_mgr, GString *str, db_type_t type, const db_type_u *value_ptr )
 {
     switch (type)
@@ -471,7 +473,7 @@ static const function_def_t *get_function_by_attr(int attr_index)
 /* print function call */
 static void print_func_call(GString *str, int func_index, const char *prefix)
 {
-    const function_def_t *func = get_function_by_attr(func_index); 
+    const function_def_t *func = get_function_by_attr(func_index);
     char **args;
     if (func == NULL) /* unexpected: BUG */
         RBH_BUG("call for non-function attr");
@@ -636,7 +638,7 @@ int attrmask2fieldcomparison(GString *str, attr_mask_t attr_mask,
         {
             if (match_table(table, i))
             {
-                g_string_append_printf(str, "%s %s%s%s%s%s ", 
+                g_string_append_printf(str, "%s %s%s%s%s%s ",
                             nbfields == 0 ? "" : separator, left_prefix,
                             field_name(i), comparator, right_prefix,
                             field_name(i));
@@ -1947,7 +1949,8 @@ out_free:
 
 
 /** manage delayed retry of retryable errors
- * \return != 0 if the transaction must be restarted
+ * \return 1 if the transaction must be restarted
+ * \return 2 if transaction must be cancelled
  */
 int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
 {
@@ -1980,6 +1983,10 @@ int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
         }
         return 0;
     }
+
+    /* Got TERM signal, must stop transactions and exit. */
+    if (lmgr_cancel_retry)
+        return 2;
 
     /* transaction is about to be restarted,
      * sleep for a given time */

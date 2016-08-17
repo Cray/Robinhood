@@ -1,4 +1,4 @@
-AM_CFLAGS= $(CC_OPT) $(DB_CFLAGS) $(PURPOSE_CFLAGS)
+AM_CFLAGS= -pthread $(CC_OPT) $(DB_CFLAGS) $(PURPOSE_CFLAGS)
 AM_LDFLAGS= -lpthread -rpath $(pkglibdir)
 
 # See autotools/m4/ax_valgrind_check.m4 for documentation
