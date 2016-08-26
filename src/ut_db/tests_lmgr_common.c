@@ -37,6 +37,8 @@ lmgr_t mgr;
 bool   list_manager_initialised = false;
 size_t n_test_records = 0;
 
+extern chglog_reader_config_t cl_reader_config;
+
 /* Copied from rbh_daemon.c */
 static int action2parsing_mask( int act_mask )
 {
@@ -261,8 +263,8 @@ done:
 
 static entry_id_t *fid_array = NULL;
 
-int get_fids_shuffled(void);
-int get_fids_shuffled(void) {
+int get_fids_shuffled(void)
+{
     int rc;
 
     if ((rc = get_fids(&fid_array, &n_test_records, false)) != 0)
@@ -306,15 +308,15 @@ int chmod_test(void *data, void **result)
     if (result != NULL)
         *result = attr_sets;
 
-    ATTR_MASK_INIT(&attr_sets->attrs);
+    ATTR_SET_INIT_ST(&attr_sets->attrs);
+    ATTR_SET_INIT_ST(&attr_sets->upd_attrs);
+
     ATTR_MASK_SET(&attr_sets->attrs, size);
     ATTR_MASK_SET(&attr_sets->attrs, type);
     ATTR_MASK_SET(&attr_sets->attrs, link);
     ATTR_MASK_SET(&attr_sets->attrs, path_update);
     ATTR_MASK_SET(&attr_sets->attrs, fullpath);
     ATTR_MASK_STATUS_SET(&attr_sets->attrs, 0);
-
-    ATTR_MASK_INIT(&attr_sets->upd_attrs);
 
     rc = ListMgr_Get(&mgr, data, &attr_sets->attrs);
     if (rc != 0)
@@ -350,8 +352,260 @@ int chmod_test(void *data, void **result)
         goto done;
 
 done:
-    if (result == NULL)
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->attrs);
+        ListMgr_FreeAttrs(&attr_sets->upd_attrs);
         free(attr_sets);
+    }
+
+    return rc;
+}
+
+const char *get_cl_last_committed_name(void)
+{
+    static char varname[MAX_VAR_LEN] = "";
+
+    if (varname[0] == '\000')
+        snprintf(varname, sizeof(varname), "%s_%s", CL_LAST_COMMITTED,
+                cl_reader_config.mdt_def[0].mdt_name);
+
+    return varname;
+}
+
+int lhsm_archive_test(void *data, void**result)
+{
+    struct lhsm_archive_test_data *attr_sets;
+    attr_set_t                     attrs_get;
+    int                            rc;
+    sm_instance_t                 *sm_lhsm;
+    static int                     changelog_last_commit = 0;
+    char                           print_buffer[20];
+
+    if (data == NULL)
+        return EINVAL;
+
+    attr_sets = malloc(sizeof(*attr_sets));
+    if (result != NULL)
+        *result = attr_sets;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    /* Initialise all attribute sets. */
+    ATTR_SET_INIT_ST(&attr_sets->attrs);
+    ATTR_SET_INIT_ST(&attr_sets->updated1_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->updated2_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->updated3_attrs);
+    ATTR_SET_INIT_ST(&attrs_get);
+
+    ATTR_MASK_SET(&attr_sets->attrs, size);
+    ATTR_MASK_SET(&attr_sets->attrs, type);
+    ATTR_MASK_SET(&attr_sets->attrs, path_update);
+    ATTR_MASK_SET(&attr_sets->attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attr_sets->attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attr_sets->attrs);
+    if (rc != 0)
+        goto done;
+
+    /** Prepare SQL statement like the following:
+     * \code{.unparsed}
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=8,
+     * last_access=1472812758, last_mod=1472812758, type='file', mode=420,
+     * nlink=1, md_update=1472812895, fileclass='++', class_update=1472812895,
+     * lhsm_status='synchro', lhsm_archid=1, lhsm_norels=0, lhsm_noarch=0 WHERE
+     * id='0x200000401:0x1:0x0'
+     * \endcode
+     */
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, owner);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, gr_name);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, blocks);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, last_access);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, last_mod);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, type);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, mode);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, nlink);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, md_update);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, fileclass);
+    ATTR_MASK_SET(&attr_sets->updated1_attrs, class_update);
+    ATTR_MASK_STATUS_SET(&attr_sets->updated1_attrs, sm_lhsm->smi_index);
+    ATTR_MASK_INFO_SET(&attr_sets->updated1_attrs, sm_lhsm, ATTR_ARCHIVE_ID);
+    ATTR_MASK_INFO_SET(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_RELEASE);
+    ATTR_MASK_INFO_SET(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_ARCHIVE);
+
+    strcpy(ATTR(&attr_sets->updated1_attrs, owner), "2000");
+    strcpy(ATTR(&attr_sets->updated1_attrs, gr_name), "root");
+    ATTR(&attr_sets->updated1_attrs, blocks) = 0;
+    ATTR(&attr_sets->updated1_attrs, last_access) = time(NULL);
+    ATTR(&attr_sets->updated1_attrs, last_mod) =
+        ATTR(&attr_sets->updated1_attrs, last_access) + 1;
+    strcpy(ATTR(&attr_sets->updated1_attrs, type), "file");
+    ATTR(&attr_sets->updated1_attrs, mode) = 420;
+    ATTR(&attr_sets->updated1_attrs, nlink) = 1;
+    ATTR(&attr_sets->updated1_attrs, md_update) =
+        ATTR(&attr_sets->updated1_attrs, last_access) + 2;
+    strcpy(ATTR(&attr_sets->updated1_attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attr_sets->updated1_attrs, class_update) =
+        ATTR(&attr_sets->updated1_attrs, last_access) + 3;
+    sm_status_ensure_alloc(&attr_sets->updated1_attrs.attr_values.sm_status);
+    sm_info_ensure_alloc(&attr_sets->updated1_attrs.attr_values.sm_info);
+    /* The next line uses direct literal - as in 'lhsm' status manager. */
+    STATUS_ATTR(&attr_sets->updated1_attrs, sm_lhsm->smi_index) = "synchro";
+    SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_ARCHIVE_ID) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_ARCHIVE_ID) = 1;
+    SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_RELEASE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_RELEASE) = 0;
+    SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_ARCHIVE) = 0;
+
+    rc = ListMgr_Update(&mgr, data, &attr_sets->updated1_attrs);
+    if (rc != 0)
+        goto done;
+
+    snprintf(print_buffer, sizeof(print_buffer), "%i", changelog_last_commit);
+    rc = ListMgr_SetVar(&mgr, get_cl_last_committed_name(),
+                        print_buffer);
+    ++changelog_last_commit;
+    if (rc != 0)
+        goto done;
+
+    ATTR_MASK_SET(&attrs_get, size);
+    ATTR_MASK_SET(&attrs_get, type);
+    ATTR_MASK_SET(&attrs_get, path_update);
+    ATTR_MASK_SET(&attrs_get, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs_get, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attrs_get);
+    if (rc != 0)
+        goto done;
+
+    /* Preparing SQL UPDATE like:
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=8,
+     * last_access=1472812758, last_mod=1472812758, type='file', mode=420,
+     * nlink=1, md_update=1472812897, fileclass='++', class_update=1472812897,
+     * lhsm_archid=1, lhsm_norels=0, lhsm_noarch=0 WHERE
+     * id='0x200000401:0x1:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, owner);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, gr_name);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, blocks);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, last_access);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, last_mod);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, type);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, mode);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, nlink);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, md_update);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, fileclass);
+    ATTR_MASK_SET(&attr_sets->updated2_attrs, class_update);
+    ATTR_MASK_INFO_SET(&attr_sets->updated2_attrs, sm_lhsm, ATTR_ARCHIVE_ID);
+    ATTR_MASK_INFO_SET(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_RELEASE);
+    ATTR_MASK_INFO_SET(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_ARCHIVE);
+
+    strcpy(ATTR(&attr_sets->updated2_attrs, owner), "2000");
+    strcpy(ATTR(&attr_sets->updated2_attrs, gr_name), "root");
+    ATTR(&attr_sets->updated2_attrs, blocks) = 0;
+    ATTR(&attr_sets->updated2_attrs, last_access) = time(NULL);
+    ATTR(&attr_sets->updated2_attrs, last_mod) =
+        ATTR(&attr_sets->updated2_attrs, last_access) + 1;
+    strcpy(ATTR(&attr_sets->updated2_attrs, type), "file");
+    ATTR(&attr_sets->updated2_attrs, mode) = 420;
+    ATTR(&attr_sets->updated2_attrs, nlink) = 1;
+    ATTR(&attr_sets->updated2_attrs, md_update) =
+        ATTR(&attr_sets->updated2_attrs, last_access) + 2;
+    strcpy(ATTR(&attr_sets->updated2_attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attr_sets->updated2_attrs, class_update) =
+        ATTR(&attr_sets->updated2_attrs, last_access) + 3;
+    sm_status_ensure_alloc(&attr_sets->updated2_attrs.attr_values.sm_status);
+    sm_info_ensure_alloc(&attr_sets->updated2_attrs.attr_values.sm_info);
+    SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_ARCHIVE_ID) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_ARCHIVE_ID) = 1;
+    SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_RELEASE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_RELEASE) = 0;
+    SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_ARCHIVE) = 0;
+
+    rc = ListMgr_Update(&mgr, data, &attr_sets->updated2_attrs);
+    if (rc != 0)
+        goto done;
+
+    ListMgr_FreeAttrs(&attrs_get);
+    ATTR_SET_INIT_ST(&attrs_get);
+    ATTR_MASK_SET(&attrs_get, size);
+    ATTR_MASK_SET(&attrs_get, type);
+    ATTR_MASK_SET(&attrs_get, path_update);
+    ATTR_MASK_SET(&attrs_get, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs_get, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attrs_get);
+    if (rc != 0)
+        goto done;
+    /* Do not free attrs_get: we'll definitely do it later. */
+
+    /* Preparing UPDATE SQL statement like:
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=8,
+     * last_access=1472812758, last_mod=1472812758, type='file', mode=420,
+     * nlink=1, md_update=1472812897, fileclass='++', class_update=1472812897,
+     * lhsm_lstarc=1472812891 WHERE id='0x200000401:0x1:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, owner);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, gr_name);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, blocks);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, last_access);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, last_mod);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, type);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, mode);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, nlink);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, md_update);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, fileclass);
+    ATTR_MASK_SET(&attr_sets->updated3_attrs, class_update);
+    ATTR_MASK_INFO_SET(&attr_sets->updated3_attrs, sm_lhsm, ATTR_LAST_ARCHIVE);
+
+    strcpy(ATTR(&attr_sets->updated3_attrs, owner), "2000");
+    strcpy(ATTR(&attr_sets->updated3_attrs, gr_name), "root");
+    ATTR(&attr_sets->updated3_attrs, blocks) = 0;
+    ATTR(&attr_sets->updated3_attrs, last_access) = time(NULL);
+    ATTR(&attr_sets->updated3_attrs, last_mod) =
+        ATTR(&attr_sets->updated3_attrs, last_access) + 1;
+    strcpy(ATTR(&attr_sets->updated3_attrs, type), "file");
+    ATTR(&attr_sets->updated3_attrs, mode) = 420;
+    ATTR(&attr_sets->updated3_attrs, nlink) = 1;
+    ATTR(&attr_sets->updated3_attrs, md_update) =
+        ATTR(&attr_sets->updated3_attrs, last_access) + 2;
+    strcpy(ATTR(&attr_sets->updated3_attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attr_sets->updated3_attrs, class_update) =
+        ATTR(&attr_sets->updated3_attrs, last_access) + 3;
+    sm_status_ensure_alloc(&attr_sets->updated3_attrs.attr_values.sm_status);
+    sm_info_ensure_alloc(&attr_sets->updated3_attrs.attr_values.sm_info);
+    SMI_INFO(&attr_sets->updated3_attrs, sm_lhsm, ATTR_LAST_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->updated3_attrs, sm_lhsm, ATTR_LAST_ARCHIVE) =
+        ATTR(&attr_sets->updated3_attrs, last_access) + 4;
+
+    rc = ListMgr_Update(&mgr, data, &attr_sets->updated3_attrs);
+    if (rc != 0)
+        goto done;
+
+done:
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->attrs);
+        ListMgr_FreeAttrs(&attr_sets->updated1_attrs);
+        ListMgr_FreeAttrs(&attr_sets->updated2_attrs);
+        ListMgr_FreeAttrs(&attr_sets->updated3_attrs);
+        free(attr_sets);
+    }
+    ListMgr_FreeAttrs(&attrs_get);
 
     return rc;
 }

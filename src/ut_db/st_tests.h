@@ -22,11 +22,13 @@
 #define TEST_INFO(_generate, _get, _free, _test, _name) \
 { \
     .generate = _generate, .get = _get, .free = _free, .test = _test, \
-    .ts = {0, 0}, .test_name = _name }
+    .ts = {0, 0}, .test_name = _name, .failed = false }
 
 int get_fids_shuffled(void);
 
 struct st_test_info test_infos[] = {
+    TEST_INFO(get_fids_shuffled, get_next_fid, free_fids, lhsm_archive_test,
+              "HSM ARCHIVE SQL sequence"),
     TEST_INFO(get_fids_shuffled, get_next_fid, free_fids, chmod_test,
               "CHMOD SQL sequence"),
     NULL_TEST_INFO

@@ -140,8 +140,10 @@ int main(int argc, char *argv[])
         for (i = 0; i < n_test_records; ++i) {
             if (test_info->get != NULL && (data = test_info->get()) == NULL)
                 return ENODATA;
-            if ((rc = test_info->test(data, NULL)) != 0)
-                return rc;
+            if ((rc = test_info->test(data, NULL)) != 0) {
+                test_info->failed = true;
+                break;
+            }
         }
         rc = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &finish);
         test_info->ts.tv_sec = finish.tv_sec - start.tv_sec;
@@ -167,8 +169,12 @@ int main(int argc, char *argv[])
         printf("Test #%li", i + 1);
         if (test_info->test_name != NULL)
             printf(" (%s)", test_info->test_name);
-        printf(" took %li sec %li nsec.\n", test_info->ts.tv_sec,
+        printf(" took %li sec %li nsec - ", test_info->ts.tv_sec,
                test_info->ts.tv_nsec);
+        if (test_info->failed)
+            printf("FAILED.\n");
+        else
+            printf("SUCCEEDED.\n");
     }
 
     return 0;
