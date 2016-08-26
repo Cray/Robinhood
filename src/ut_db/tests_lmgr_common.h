@@ -18,6 +18,32 @@
 #include <stdlib.h>
 
 #include "list_mgr.h"
+#include "status_manager.h"
+
+/* Copied from src/modules/lhsm.c */
+enum lhsm_info_e
+{
+    ATTR_ARCHIVE_ID = 0,
+    ATTR_NO_RELEASE,
+    ATTR_NO_ARCHIVE,
+    ATTR_LAST_ARCHIVE,
+    ATTR_LAST_RESTORE
+};
+
+/* Copied from src/modules/lhsm.c */
+/** set of managed status */
+typedef enum {
+  STATUS_NEW,                   /* file has no HSM flags (just created) */
+  STATUS_MODIFIED,              /* file must be archived */
+  STATUS_RESTORE_RUNNING,       /* file is being retrieved */
+  STATUS_ARCHIVE_RUNNING,       /* file is being archived */
+  STATUS_SYNCHRO,               /* file has been synchronized in HSM,
+                                   file can be purged */
+  STATUS_RELEASED,              /* file is released (nothing to do).
+                                   XXX should not be in DB? */
+
+  STATUS_COUNT,                 /* number of possible file status */
+} hsm_status_t;
 
 /** Path to robinhood configuration file. */
 extern char *config_file_name;
@@ -54,15 +80,43 @@ struct st_test_info {
     /* Time spent in tests. */
     struct timespec        ts;
     const char            *test_name;
+    bool                   failed;
 };
 
 int chmod_test(void *data, void **result);
+int lhsm_archive_test(void *data, void**result);
+
+int get_fids_shuffled(void);
 void free_fids(void);
 void *get_next_fid(void);
+
+#define LHSM_SMI smi_by_name("lhsm")
+
+/** Get ChangelogLastCommit full variable name according to loaded
+ * configuration.
+ */
+const char *get_cl_last_committed_name(void);
+
+/** Initialise attribute set.
+ * \attr _a pointer to attr_set_t.
+ */
+#define ATTR_SET_INIT_ST(_a)            \
+do {                                    \
+    ATTR_MASK_INIT(_a);                 \
+    (_a)->attr_values.sm_status = NULL; \
+    (_a)->attr_values.sm_info = NULL;    \
+} while (false)
 
 struct chmod_test_data {
     attr_set_t attrs;
     attr_set_t upd_attrs;
+};
+
+struct lhsm_archive_test_data {
+    attr_set_t attrs;
+    attr_set_t updated1_attrs;
+    attr_set_t updated2_attrs;
+    attr_set_t updated3_attrs;
 };
 
 #endif
