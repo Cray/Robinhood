@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "tests_lmgr_common.h"
 
@@ -608,4 +609,194 @@ done:
     ListMgr_FreeAttrs(&attrs_get);
 
     return rc;
+}
+
+static bool entry_id_gt(entry_id_t *first, entry_id_t *second);
+static bool entry_id_gt(entry_id_t *first, entry_id_t *second)
+{
+    return (first->f_seq > second->f_seq)
+        || (   (first->f_seq == second->f_seq)
+            && (   (first->f_oid > second->f_oid)
+                || ((first->f_oid == second->f_oid)
+                    && (first->f_ver > second->f_ver))));
+}
+
+int get_max_fid(entry_id_t *id)
+{
+    int        rc;
+    const char max_fid_req[] = "select id from "MAIN_TABLE;
+    MYSQL_RES *sql_result;
+    MYSQL_ROW  row;
+    entry_id_t fid = {0, 0, 0};
+
+    if (id == NULL)
+        return EINVAL;
+    memset(id, 0, sizeof(*id));
+
+    rc = mysql_real_query(&mgr.conn, max_fid_req, strlen(max_fid_req));
+    if (rc != 0)
+        return rc;
+
+    sql_result = mysql_store_result(&mgr.conn);
+    if (sql_result == NULL)
+        return ENODATA;
+
+    while ((row = mysql_fetch_row(sql_result)) != NULL) {
+        pk2entry_id(&mgr, row[0], &fid);
+        if (entry_id_gt(&fid, id) > 0)
+            memcpy(id, &fid, sizeof(fid));
+    }
+
+    mysql_free_result(sql_result);
+
+    return 0;
+}
+
+int inc_fid(entry_id_t *id)
+{
+    if (id == NULL)
+        return EINVAL;
+    if (id->f_oid != UINT32_MAX) {
+        ++id->f_oid;
+    } else if (id->f_seq == ULLONG_MAX) {
+        return E2BIG;
+    } else {
+        ++id->f_seq;
+        id->f_oid = 0;
+    }
+    return 0;
+}
+
+int mkdir_test(void *data, void **result)
+{
+    struct mkdir_test_data *attr_sets;
+    int                     rc;
+    sm_instance_t          *sm_lhsm;
+    static int              dir_number = 0;
+    char                    print_buffer[20];
+    struct dir_test_data   *test_data = data;
+
+    if (test_data == NULL)
+        return EINVAL;
+
+    attr_sets = malloc(sizeof(*attr_sets));
+    if (result != NULL)
+        *result = attr_sets;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    ATTR_SET_INIT_ST(&attr_sets->sel_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->ins_attrs);
+
+    /* Prepare SELECT SQL statement like:
+     * SELECT size, this_path(parent_id, name) FROM ENTRIES LEFT JOIN NAMES ON
+     * ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x5:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->sel_attrs, size);
+    ATTR_MASK_SET(&attr_sets->sel_attrs, fullpath);
+
+    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &attr_sets->sel_attrs);
+    if (rc != ENOENT)
+        goto done;
+
+    /* Prepare INSERT SQL statements like:
+     * INSERT INTO ENTRIES(id, owner, gr_name, size, blocks, creation_time,
+     * last_access, last_mod, type, mode, nlink, md_update, fileclass,
+     * class_update) VALUES ('0x200000401:0x5:0x0', 'root', 'root', 4096, 8,
+     * 1472813482, 1472813482, 1472813482, 'dir', 493, 2, 1472813488, '++',
+     * 1472813488)
+     *
+     * INSERT INTO NAMES(id, parent_id, name, path_update, pkn) VALUES
+     * ('0x200000401:0x5:0x0', '0x200000007:0x1:0x0', 'directory', 1472813488,
+     * sha1(CONCAT(parent_id, '/', name))) ON DUPLICATE KEY UPDATE
+     * id=VALUES(id), parent_id=VALUES(parent_id), name=VALUES(name),
+     * path_update=VALUES(path_update)
+     */
+    ATTR_MASK_SET(&attr_sets->ins_attrs, owner);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, gr_name);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, size);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, blocks);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, creation_time);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, last_access);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, last_mod);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, type);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, mode);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, nlink);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, md_update);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, fileclass);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, class_update);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, parent_id);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, name);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, path_update);
+
+    strcpy(ATTR(&attr_sets->ins_attrs, owner), "root");
+    strcpy(ATTR(&attr_sets->ins_attrs, gr_name), "root");
+    ATTR(&attr_sets->ins_attrs, size) = 24850;
+    ATTR(&attr_sets->ins_attrs, blocks) = 1;
+    ATTR(&attr_sets->ins_attrs, creation_time) = time(NULL);
+    ATTR(&attr_sets->ins_attrs, last_access) = ATTR(&attr_sets->ins_attrs,
+                                                     creation_time) + 1;
+    ATTR(&attr_sets->ins_attrs, last_mod) = ATTR(&attr_sets->ins_attrs,
+                                                  last_access) + 1;
+    strcpy(ATTR(&attr_sets->ins_attrs, type), "dir");
+    ATTR(&attr_sets->ins_attrs, mode) = 420;
+    ATTR(&attr_sets->ins_attrs, nlink) = 1;
+    ATTR(&attr_sets->ins_attrs, md_update) = ATTR(&attr_sets->ins_attrs,
+                                                  last_mod) + 1;
+    strcpy(ATTR(&attr_sets->ins_attrs, fileclass), "test_dir_class");
+    ATTR(&attr_sets->ins_attrs, class_update) = ATTR(&attr_sets->ins_attrs,
+                                                     md_update) + 1;
+    memcpy(&ATTR(&attr_sets->ins_attrs, parent_id), &test_data->fs_fid,
+           sizeof(test_data->fs_fid));
+    snprintf(print_buffer, sizeof(print_buffer), "dir%i", dir_number);
+    strcpy(ATTR(&attr_sets->ins_attrs, name), print_buffer);
+    ATTR(&attr_sets->ins_attrs, path_update) = ATTR(&attr_sets->ins_attrs,
+                                                     class_update) + 1;
+
+    rc = ListMgr_Insert(&mgr, &test_data->dir_fid, &attr_sets->ins_attrs,
+                        false);
+    if (rc != 0)
+        goto done;
+
+done:
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->sel_attrs);
+        ListMgr_FreeAttrs(&attr_sets->ins_attrs);
+        free(attr_sets);
+    }
+
+    return rc;
+}
+
+static struct dir_test_data dir_data;
+
+int mkdir_test_init(void)
+{
+    int rc;
+
+    if ((rc = get_fids_shuffled()) != 0)
+        return rc;
+
+    if ((rc = get_max_fid(&dir_data.fs_fid)) != 0)
+        return rc;
+    if ((rc = inc_fid(&dir_data.fs_fid)) != 0)
+        return rc;
+
+    memcpy(&dir_data.dir_fid, &dir_data.fs_fid, sizeof(dir_data.dir_fid));
+    return 0;
+}
+
+void *get_next_dir_data(void)
+{
+    int rc;
+
+    rc = inc_fid(&dir_data.dir_fid);
+    if (rc != 0)
+        return NULL;
+
+    return &dir_data;
 }
