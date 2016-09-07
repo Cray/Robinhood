@@ -40,6 +40,7 @@ void list_manager_chmod_test(void);
 void list_manager_connfail_test(void);
 void list_manager_lhsm_archive_test(void);
 void list_manager_mkdir_test(void);
+void list_manager_rmdir_test(void);
 
 #define UNIT_TEST_INFO(test_name) \
 {#test_name, (test_name)}
@@ -516,11 +517,26 @@ void list_manager_connfail_test(void)
     lmgr_cancel_retry = false;
 }
 
+void list_manager_rmdir_test(void)
+{
+    int   rc;
+    void *dir_inputs;
+
+    rc = rmdir_test_init();
+    CU_ASSERT_EQUAL(rc, 0);
+    dir_inputs = get_next_dir_data();
+    CU_ASSERT_PTR_NOT_NULL(dir_inputs);
+
+    rc = rmdir_test(dir_inputs, NULL);
+    CU_ASSERT_EQUAL(rc, 0);
+}
+
 CU_TestInfo list_manager_suite[] = {
     UNIT_TEST_INFO(list_manager_simple_test),
     UNIT_TEST_INFO(list_manager_chmod_test),
     UNIT_TEST_INFO(list_manager_connfail_test),
     UNIT_TEST_INFO(list_manager_lhsm_archive_test),
     UNIT_TEST_INFO(list_manager_mkdir_test),
+    UNIT_TEST_INFO(list_manager_rmdir_test),
     CU_TEST_INFO_NULL
 };
