@@ -31,6 +31,8 @@ struct st_test_info test_infos[] = {
               "CHMOD SQL sequence"),
     TEST_INFO(mkdir_test_init, get_next_dir_data, free_fids, mkdir_test,
               "MKDIR SQL sequence"),
+    TEST_INFO(rmdir_test_init, get_next_dir_data, free_fids, rmdir_test,
+              "RMDIR SQL sequence"),
     NULL_TEST_INFO
 };
 

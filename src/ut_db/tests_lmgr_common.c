@@ -672,7 +672,6 @@ int mkdir_test(void *data, void **result)
     struct mkdir_test_data *attr_sets;
     int                     rc;
     sm_instance_t          *sm_lhsm;
-    static int              dir_number = 0;
     char                    print_buffer[20];
     struct dir_test_data   *test_data = data;
 
@@ -752,7 +751,9 @@ int mkdir_test(void *data, void **result)
                                                      md_update) + 1;
     memcpy(&ATTR(&attr_sets->ins_attrs, parent_id), &test_data->fs_fid,
            sizeof(test_data->fs_fid));
-    snprintf(print_buffer, sizeof(print_buffer), "dir%i", dir_number);
+    snprintf(print_buffer, sizeof(print_buffer), "dir%i",
+             test_data->dir_number);
+    ++test_data->dir_number;
     strcpy(ATTR(&attr_sets->ins_attrs, name), print_buffer);
     ATTR(&attr_sets->ins_attrs, path_update) = ATTR(&attr_sets->ins_attrs,
                                                      class_update) + 1;
@@ -787,6 +788,8 @@ int mkdir_test_init(void)
         return rc;
 
     memcpy(&dir_data.dir_fid, &dir_data.fs_fid, sizeof(dir_data.dir_fid));
+    dir_data.dir_number = 0;
+
     return 0;
 }
 
@@ -799,4 +802,84 @@ void *get_next_dir_data(void)
         return NULL;
 
     return &dir_data;
+}
+
+int rmdir_test(void *data, void **result)
+{
+    int                   rc;
+    char                  print_buffer[20];
+    struct dir_test_data *test_data = data;
+    attr_set_t            sel_attrs;
+    attr_set_t            del_attrs;
+
+    (void)result; /* This test produces no output. */
+
+    if (test_data == NULL)
+        return EINVAL;
+
+    ATTR_SET_INIT_ST(&sel_attrs);
+    ATTR_SET_INIT_ST(&del_attrs);
+
+    /* Prepare SQL statement like:
+     * SELECT size, this_path(parent_id, name) FROM ENTRIES LEFT JOIN NAMES ON
+     * ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x5:0x0'
+     */
+    ATTR_MASK_SET(&sel_attrs, size);
+    ATTR_MASK_SET(&sel_attrs, fullpath);
+
+    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &sel_attrs);
+    if (rc != 0)
+        goto done;
+
+    /* Prepare SQL set like:
+     * DELETE M.*, A.*, I.*, S.* FROM ENTRIES M LEFT JOIN ANNEX_INFO A ON M.id =
+     * A.id LEFT JOIN STRIPE_INFO I ON M.id = I.id LEFT JOIN STRIPE_ITEMS S ON
+     * M.id = S.id WHERE M.id='0x200000401:0x5:0x0'
+     *
+     * DELETE FROM NAMES WHERE pkn=sha1(CONCAT('0x200000007:0x1:0x0', '/',
+     * 'directory')) AND id='0x200000401:0x5:0x0'
+     */
+    ATTR_MASK_SET(&del_attrs, parent_id);
+    ATTR_MASK_SET(&del_attrs, name);
+
+    memcpy(&ATTR(&del_attrs, parent_id), &test_data->fs_fid,
+           sizeof(test_data->fs_fid));
+    snprintf(print_buffer, sizeof(print_buffer), "dir%i",
+             test_data->dir_number);
+    ++test_data->dir_number;
+    strcpy(ATTR(&del_attrs, name), print_buffer);
+
+    rc = ListMgr_Remove(&mgr, &test_data->dir_fid, &del_attrs, true);
+
+done:
+    ListMgr_FreeAttrs(&sel_attrs);
+    ListMgr_FreeAttrs(&del_attrs);
+
+    return rc;
+}
+
+int rmdir_test_init(void)
+{
+    int   rc;
+    void *mkdir_data;
+    int   i;
+
+    rc = mkdir_test_init();
+    if (rc != 0)
+        return rc;
+
+    for (i = 0; i < n_test_records; ++i) {
+        mkdir_data = get_next_dir_data();
+        if (mkdir_data == NULL)
+            return ENODATA;
+
+        rc = mkdir_test(mkdir_data, NULL);
+        if (rc != 0)
+            return rc;
+    }
+
+    memcpy(&dir_data.dir_fid, &dir_data.fs_fid, sizeof(dir_data.dir_fid));
+    dir_data.dir_number = 0;
+
+    return 0;
 }

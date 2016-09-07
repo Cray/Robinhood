@@ -86,6 +86,7 @@ struct st_test_info {
 int chmod_test(void *data, void **result);
 int lhsm_archive_test(void *data, void**result);
 int mkdir_test(void *data, void **result);
+int rmdir_test(void *data, void **result);
 
 int get_fids_shuffled(void);
 void free_fids(void);
@@ -98,9 +99,11 @@ struct dir_test_data {
     /** Lustre uses FID that is not present in @ref MAIN_TABLE as FS FID. */
     entry_id_t fs_fid;
     entry_id_t dir_fid;
+    int        dir_number;
 };
 
 int mkdir_test_init(void);
+int rmdir_test_init(void);
 void *get_next_dir_data(void);
 
 #define LHSM_SMI smi_by_name("lhsm")
