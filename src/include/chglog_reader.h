@@ -31,6 +31,7 @@
 #include "list.h"
 #include "lustre_extended_types.h"
 #include <stdbool.h>
+#include "entry_proc_hash.h"
 
 #define MDT_NAME_MAX  32
 #define READER_ID_MAX 16
@@ -66,11 +67,17 @@ typedef struct chglog_reader_config_t {
      * internal queue have aged. */
     time_t queue_check_interval;
 
+    /** Enable changelog records compacting. */
+    bool compact_queue;
+
     /* Options suported by the MDS. LU-543 and LU-1331 are related to
      * events in changelog, where a rename is overriding a destination
      * file. */
     bool mds_has_lu543;
     bool mds_has_lu1331;
+
+    /* file to dump all changelog records */
+    char dump_file[RBH_PATH_MAX];
 
 } chglog_reader_config_t;
 
@@ -154,6 +161,7 @@ typedef struct reader_thr_info_t
     /** Queue of pending changelogs to push to the pipeline. */
     struct rh_list_head op_queue;
     unsigned int op_queue_count;
+    bool op_queue_updated;
 
     /** Store the ops for easier access. Each element in the hash
      * table is also in the op_queue list. This hash table doesn't
@@ -185,6 +193,11 @@ typedef struct reader_thr_info_t
  * This handles a single log record.
  */
 int process_log_rec( reader_thr_info_t * p_info, CL_REC_TYPE * p_rec );
+
+bool unlink_compact(struct rh_list_head *op_queue,
+                    unsigned int *op_queue_count);
+
+void compact_op_queue(reader_thr_info_t *info);
 /** @} */
 
 #endif

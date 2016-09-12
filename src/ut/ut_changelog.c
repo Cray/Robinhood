@@ -25,6 +25,7 @@
 #include "entry_proc_hash.h"
 #include "Memory.h"
 #include "entry_processor.h"
+#include "rbh_logs.h"
 
 #include <lustre/lustreapi.h>
 
@@ -38,7 +39,45 @@
 #define TEST_LUSTRE_FID_OID 400000
 #define TEST_LUSTRE_FID_SEQ 1
 
+extern chglog_reader_config_t cl_reader_config;
+
 static struct reader_thr_info_t thread_info;
+
+static entry_id_t basic_fid = {
+    .f_seq = TEST_LUSTRE_FID_SEQ,
+    .f_oid = TEST_LUSTRE_FID_OID,
+    .f_ver = 0
+};
+
+static entry_id_t zero_fid = { .f_seq = 0, .f_oid = 0, .f_ver = 0};
+
+#define CHANGELOG_RECORD(_rt, _idx, _tfid, _pfid, _name,                   \
+                         _sfid, _spfid, _sname)                            \
+{                                                                          \
+    .rec_type = (_rt), .idx = (_idx), .tfid = (_tfid), .pfid = (_pfid),    \
+    .name = (_name), .sfid = (_sfid), .spfid = (_spfid), .sname = (_sname) \
+}
+
+#define SHORT_RECORD(_rt, _idx, _tfid, _pfid, _name)           \
+    CHANGELOG_RECORD((_rt), (_idx), (_tfid), (_pfid), (_name), \
+                     zero_fid, zero_fid, NULL)
+
+#define RENAME_RECORD(_idx, _pfid, _name, _sfid, _spfid, _sname)    \
+    CHANGELOG_RECORD(CL_RENAME, (_idx), zero_fid, (_pfid), (_name), \
+                     (_sfid), (_spfid), (_sname))
+
+struct changelog_record_descr {
+    uint32_t    rec_type;
+    uint64_t    idx;
+    entry_id_t  tfid;
+    entry_id_t  pfid;
+    const char *name;
+    entry_id_t  sfid;
+    entry_id_t  spfid;
+    const char *sname;
+};
+
+int cl_rec_alloc_fill(CL_REC_TYPE **rec, struct changelog_record_descr *crd);
 
 void changelog_test_init(void);
 void changelog_test_fini(void);
@@ -52,8 +91,8 @@ void changelog_test_fini(void);
 
 UNIT_TEST(process_log_rec_invalid_test)
 {
-	CL_REC_TYPE rec;
-	int         rc;
+    CL_REC_TYPE rec;
+    int         rc;
 
     rec.cr_type = -1;
     rc = process_log_rec(&thread_info, &rec);
@@ -101,18 +140,18 @@ static int process_log_rec_record_count(void)
 
 static void process_log_rec_queue_cleanup(void)
 {
-	entry_proc_op_t *op;
+    entry_proc_op_t *op;
 
-	while(!rh_list_empty(&thread_info.op_queue)) {
-		op = rh_list_first_entry(&thread_info.op_queue,
-					 entry_proc_op_t, list);
-		rh_list_del(&op->list);
-		rh_list_del(&op->id_hash_list);
+    while(!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue,
+                                 entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
 
-		EntryProcessor_Release(op);
+        EntryProcessor_Release(op);
 
-		thread_info.op_queue_count --;
-	}
+        thread_info.op_queue_count --;
+    }
 }
 
 #if defined(HAVE_CHANGELOG_EXTEND_REC) || defined(HAVE_FLEX_CL)
@@ -141,8 +180,8 @@ UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
     rec->cr_tfid.f_oid = 0;
     rec->cr_tfid.f_seq = 0;
 
-    sprintf(changelog_rec_name(rec), "%s", target_name);
-    sprintf(changelog_rec_sname(rec), "%s", source_name);
+    sprintf(rh_get_cl_cr_name(rec), "%s", target_name);
+    sprintf((char*)changelog_rec_sname(rec), "%s", source_name);
 
     rec->cr_namelen = strlen(target_name) + strlen(source_name) + 1;
 
@@ -151,10 +190,10 @@ UNIT_TEST(process_log_rec_rename_one_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 1);
 
-	n_records = process_log_rec_record_count();
-	CU_ASSERT_EQUAL(n_records, 2);
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
 
-	MemFree(rec);
+    MemFree(rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -184,8 +223,8 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
     rec->cr_tfid.f_oid = TEST_LUSTRE_FID_OID;
     rec->cr_tfid.f_seq = TEST_LUSTRE_FID_SEQ;
 
-    sprintf(changelog_rec_name(rec), "%s", target_name);
-    sprintf(changelog_rec_sname(rec), "%s", source_name);
+    sprintf(rh_get_cl_cr_name(rec), "%s", target_name);
+    sprintf((char*)changelog_rec_sname(rec), "%s", source_name);
 
     rec->cr_namelen = strlen(target_name) + strlen(source_name) + 1;
 
@@ -197,7 +236,7 @@ UNIT_TEST(process_log_rec_rename_non_zero_tfid_test)
     n_records = process_log_rec_record_count();
     CU_ASSERT_EQUAL(n_records, 3);
 
-	MemFree(rec);
+    MemFree(rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -249,11 +288,11 @@ UNIT_TEST(process_log_rec_rename_ext_rec_one_zero_tfid_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, 2);
 
-	n_records = process_log_rec_record_count();
-	CU_ASSERT_EQUAL(n_records, 2);
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
 
-	MemFree(rec);
-	MemFree(ext_rec);
+    MemFree(rec);
+    MemFree(ext_rec);
 
 #undef TEST_SHORT_NAME
 }
@@ -307,8 +346,8 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
     ext_rec->cr_tfid.f_oid = TEST_LUSTRE_FID_OID;
     ext_rec->cr_tfid.f_seq = TEST_LUSTRE_FID_SEQ;
 
-    sprintf(changelog_rec_name(ext_rec), "%s", target_name);
-    sprintf(changelog_rec_sname(ext_rec), "%s", source_name);
+    sprintf(rh_get_cl_cr_name(ext_rec), "%s", target_name);
+    sprintf((char*)changelog_rec_sname(ext_rec), "%s", source_name);
 
     ext_rec->cr_namelen = 0;
 
@@ -329,26 +368,23 @@ UNIT_TEST(process_log_rec_rename_ext_rec_non_zero_tfid_test)
 UNIT_TEST(process_log_rec_unlink)
 {
 #define TEST_SHORT_NAME "unlink"
-    CL_REC_TYPE             *rec;
-    int                      rc;
-    int                      n_records;
-    const char               target_name[]= TEST_SHORT_NAME "_target";
-    size_t                   record_size;
+    CL_REC_TYPE *rec;
+    int          rc;
+    int          n_records;
+    const char   target_name[] = TEST_SHORT_NAME "_target";
+    size_t       record_size;
 
     record_size = sizeof(CL_REC_TYPE) +
-#if defined(HAVE_FLEX_CL)
-                  sizeof(struct changelog_ext_rename) +
-#endif
                   strlen(target_name) + 1;
     rec = (CL_REC_TYPE*)MemAlloc(record_size);
-    memset(rec, 0, record_size);
     CU_ASSERT_NOT_EQUAL_FATAL(rec, NULL);
+    memset(rec, 0, record_size);
 
     rec->cr_type = CL_UNLINK;
     rec->cr_tfid.f_oid = TEST_LUSTRE_FID_OID;
     rec->cr_tfid.f_seq = TEST_LUSTRE_FID_SEQ;
 
-    sprintf(changelog_rec_name(rec), "%s", target_name);
+    sprintf(rh_get_cl_cr_name(rec), "%s", target_name);
     rec->cr_namelen = strlen(target_name);
 
     rc = process_log_rec(&thread_info, rec);
@@ -364,18 +400,994 @@ UNIT_TEST(process_log_rec_unlink)
 #undef TEST_SHORT_NAME
 }
 
+/** @{
+ * The following test cases cover all functionality of @ref unlink_compact():
+ * Starting record | Final record
+ * ----------------|-------------
+ * CL_CREATE       | CL_UNLINK
+ * CL_CREATE       | CL_RENAME
+ * CL_MKDIR        | CL_RENAME
+ * CL_MKDIR        | CL_RMDIR
+ * CL_EXT          | CL_UNLINK
+ * CL_EXT          | CL_RMDIR
+ * CL_EXT          | CL_RENAME
+ * CL_HARDLINK     | CL_UNLINK
+ * CL_HARDLINK     | CL_RENAME
+ * CL_SOFTLINK     | CL_UNLINK
+ * CL_SOFTLINK     | CL_RENAME
+ *
+ * @Note
+ * * CL_EXT record is to be created as result of CL_RENAME record handling.
+ * * Each CL_UNLINK final record to be tested in two variants: last and interim.
+ * * Each starting and final records are to be separated with something like
+ * CL_MKDIR, CL_CREATE, and so on with different target FID.
+ */
+
+int cl_rec_alloc_fill(CL_REC_TYPE **rec, struct changelog_record_descr *crd)
+{
+    size_t                       record_size;
+#if defined(HAVE_FLEX_CL)
+    struct changelog_ext_rename *ext_rec;
+#endif
+
+    if (   rec == NULL
+        || crd->rec_type >= CL_LAST
+        || crd->name == NULL
+        || (crd->rec_type == CL_RENAME && crd->sname == NULL)) {
+        return EINVAL;
+    }
+
+    record_size = sizeof(CL_REC_TYPE) + strlen(crd->name) + 1;
+    if (crd->rec_type == CL_RENAME) {
+#if defined(HAVE_FLEX_CL)
+        record_size += sizeof(struct changelog_ext_rename) + strlen(crd->sname);
+        ++record_size; /* Trailing zero of source name. */
+#elif defined(HAVE_CHANGELOG_EXTEND_REC)
+        record_size += strlen(crd->sname) + 1;
+#else
+#error Unsupported Lustre version (prior to 2.3).
+#endif
+    }
+
+    *rec = MemAlloc(record_size);
+    if (*rec == NULL) {
+        return ENOMEM;
+    }
+
+    memset(*rec, 0, record_size);
+    (*rec)->cr_type = crd->rec_type;
+    (*rec)->cr_pfid = crd->pfid;
+    (*rec)->cr_index = crd->idx;
+    if (crd->rec_type != CL_RENAME) {
+        (*rec)->cr_tfid = crd->tfid;
+    } else {
+        (*rec)->cr_flags = PROCESS_LOG_ONE_REC;
+#if defined(HAVE_FLEX_CL)
+        ext_rec = changelog_rec_rename(*rec);
+        ext_rec->cr_sfid = crd->sfid;
+        ext_rec->cr_spfid = crd->spfid;
+#else
+        (*rec)->cr_sfid = crd->sfid;
+        (*rec)->cr_spfid = crd->spfid;
+#endif
+    }
+    sprintf(rh_get_cl_cr_name(*rec), "%s", crd->name);
+    /* We have to set source name after target name */
+    if ((*rec)->cr_type == CL_RENAME) {
+        sprintf((char*)changelog_rec_sname(*rec), "%s", crd->sname);
+        (*rec)->cr_namelen = strlen(crd->sname);
+    }
+    (*rec)->cr_namelen += strlen(crd->name) + 1;
+
+    return 0;
+}
+
+UNIT_TEST(unlink_compact_create_unlink_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name_0"),
+        SHORT_RECORD(CL_HARDLINK, 0, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_UNLINK, 0, basic_fid, basic_fid, "target_name_0")
+    };
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 1);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 1);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type,
+                    CL_HARDLINK);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+#undef TEST_SHORT_NAME
+}
+
+UNIT_TEST(unlink_compact_create_unlink_final_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name_0"),
+        SHORT_RECORD(CL_HARDLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_UNLINK, 2, basic_fid, basic_fid, "target_name_0")
+    };
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        if (i == 2) {
+            rec[2]->cr_flags |= CLF_UNLINK_LAST;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 1);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 1);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_UNLINK);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+#undef N_TEST_RECORDS
+#undef TEST_SHORT_NAME
+}
+
+UNIT_TEST(unlink_compact_create_rename_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name_0"),
+        SHORT_RECORD(CL_HARDLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        RENAME_RECORD(2, basic_fid, "target_name_new",
+                      basic_fid, basic_fid, "target_name_0")
+    };
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type,
+                    CL_HARDLINK);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type,
+                    CL_EXT);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+#undef TEST_SHORT_NAME
+}
+
+UNIT_TEST(unlink_compact_mkdir_rename_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                   *rec[N_TEST_RECORDS];
+    int                            rc;
+    int                            n_records;
+    int                            i;
+    entry_proc_op_t               *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_MKDIR, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_CREATE, 1, basic_fid, basic_fid, "target_name"),
+        RENAME_RECORD(2, basic_fid, "target_name_new",
+                      basic_fid, basic_fid, "target_name")
+    };
+
+    record_inputs[1].tfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS - 1; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 1);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_EXT);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_mkdir_rmdir_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                   *rec[N_TEST_RECORDS];
+    int                            rc;
+    int                            n_records;
+    int                            i;
+    entry_proc_op_t               *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_MKDIR, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_CREATE, 1, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_RMDIR, 2, basic_fid, basic_fid, "target_name"),
+    };
+
+    record_inputs[1].tfid.f_oid += 1;
+    record_inputs[1].pfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS - 1; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 1);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 1);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_ext_unlink_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        RENAME_RECORD(0, basic_fid, "target_name_new",
+                      basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_CREATE, 3, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_UNLINK, 4, basic_fid, basic_fid, "target_name_new")
+    };
+
+    record_inputs[1].tfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 1);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_RENAME);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_ext_rmdir_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        RENAME_RECORD(0, basic_fid, "target_name_new",
+                      basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_CREATE, 1, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_RMDIR, 2, basic_fid, basic_fid, "target_name_new")
+    };
+
+    record_inputs[1].tfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 1);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_RENAME);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_ext_rename_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        RENAME_RECORD(0, basic_fid, "target_name_new",
+                      basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_CREATE, 1, basic_fid, basic_fid, "target_name"),
+        RENAME_RECORD(2, basic_fid, "target_name_new2",
+                      basic_fid, basic_fid, "target_name_new")
+    };
+
+    record_inputs[1].tfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 2);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 3);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 3);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_RENAME);
+    op = rh_list_entry(op->list.next, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_EXT);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_hardlink_unlink_test)
+{
+#define N_TEST_RECORDS 4
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_HARDLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_CREATE, 2, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_UNLINK, 3, basic_fid, basic_fid, "target_name_1"),
+    };
+
+    record_inputs[2].tfid.f_oid += 2;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_hardlink_unlink_final_test)
+{
+#define N_TEST_RECORDS 4
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_HARDLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_CREATE, 2, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_UNLINK, 3, basic_fid, basic_fid, "target_name_1"),
+    };
+
+    record_inputs[2].tfid.f_oid += 2;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        if (i == 3) {
+            rec[3]->cr_flags |= CLF_UNLINK_LAST;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_UNLINK);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_hardlink_rename_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_HARDLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_CREATE, 2, basic_fid, basic_fid, "target_name"),
+        RENAME_RECORD(3, basic_fid, "target_name_new2",
+                      basic_fid, basic_fid, "target_name_1")
+    };
+
+    record_inputs[1].tfid.f_oid += 2;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 1);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_EXT);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_softlink_unlink_test)
+{
+#define N_TEST_RECORDS 4
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_SOFTLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_HARDLINK, 2, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_UNLINK, 3, basic_fid, basic_fid, "target_name_1"),
+    };
+
+    record_inputs[0].tfid.f_oid += 1;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_HARDLINK);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_softlink_unlink_final_test)
+{
+#define N_TEST_RECORDS 4
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_CREATE, 0, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_SOFTLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_HARDLINK, 2, basic_fid, basic_fid, "target_name"),
+        SHORT_RECORD(CL_UNLINK, 3, basic_fid, basic_fid, "target_name_1"),
+    };
+
+    record_inputs[0].tfid.f_oid += 2;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        if (i == 3) {
+            rec[3]->cr_flags |= CLF_UNLINK_LAST;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_UNLINK);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+UNIT_TEST(unlink_compact_softlink_rename_test)
+{
+#define N_TEST_RECORDS 3
+    CL_REC_TYPE                  *rec[N_TEST_RECORDS];
+    int                           rc;
+    int                           n_records;
+    int                           i;
+    entry_proc_op_t              *op;
+    struct changelog_record_descr record_inputs[N_TEST_RECORDS] = {
+        SHORT_RECORD(CL_SOFTLINK, 1, basic_fid, basic_fid, "target_name_1"),
+        SHORT_RECORD(CL_CREATE, 2, basic_fid, basic_fid, "target_name"),
+        RENAME_RECORD(3, basic_fid, "target_name_new2",
+                      basic_fid, basic_fid, "target_name_1")
+    };
+
+    record_inputs[1].tfid.f_oid += 2;
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rec[i] = NULL;
+    }
+
+    for (i = 0; i < N_TEST_RECORDS; ++i) {
+        rc = cl_rec_alloc_fill(rec + i, record_inputs + i);
+        CU_ASSERT_EQUAL(rc, 0);
+        if (rc != 0) {
+            /* Fatal failure, can't proceed with test. */
+            goto test_done;
+        }
+        rc = process_log_rec(&thread_info, rec[i]);
+        CU_ASSERT_EQUAL(rc, 0);
+    }
+
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, N_TEST_RECORDS + 1);
+
+    CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
+    CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
+
+    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+                                  &thread_info.op_queue_count));
+
+    n_records = process_log_rec_record_count();
+    CU_ASSERT_EQUAL(n_records, 2);
+    CU_ASSERT_EQUAL(thread_info.op_queue_count, 2);
+
+    op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_CREATE);
+    op = rh_list_last_entry(&thread_info.op_queue, entry_proc_op_t, list);
+    CU_ASSERT_PTR_NOT_NULL(op);
+    CU_ASSERT_EQUAL(op->extra_info.log_record.p_log_rec->cr_type, CL_EXT);
+
+test_done:
+    for (i = 0; i < N_TEST_RECORDS; ++i)
+        if (rec[i] != NULL)
+            MemFree(rec[i]);
+    while (!rh_list_empty(&thread_info.op_queue)) {
+        op = rh_list_first_entry(&thread_info.op_queue, entry_proc_op_t, list);
+        rh_list_del(&op->list);
+        rh_list_del(&op->id_hash_list);
+    }
+#undef N_TEST_RECORDS
+}
+
+/** @} */
+
 void changelog_test_init(void)
 {
-	memset(&thread_info, 0, sizeof(thread_info));
-	rh_list_init(&thread_info.op_queue);
-	thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
+    log_config.debug_level = 0;
+    memset(&thread_info, 0, sizeof(thread_info));
+    rh_list_init(&thread_info.op_queue);
+    thread_info.id_hash = id_hash_init(ID_CHGLOG_HASH_SIZE, false);
 }
 
 void changelog_test_fini(void)
 {
-	process_log_rec_queue_cleanup();
-	MemFree(thread_info.id_hash);
-	memset(&thread_info, 0, sizeof(thread_info));
+    process_log_rec_queue_cleanup();
+    MemFree(thread_info.id_hash);
+    memset(&thread_info, 0, sizeof(thread_info));
+}
+
+int changelog_suite_init(void)
+{
+    cl_reader_config.mdt_count = 1;
+    cl_reader_config.mdt_def = MemCalloc(1, sizeof(mdt_def_t));
+    if (cl_reader_config.mdt_def == NULL)
+        return ENOMEM;
+
+    strcpy(cl_reader_config.mdt_def[0].mdt_name, "fake_mdt");
+
+    return 0;
+}
+
+int changelog_suite_fini(void)
+{
+    MemFree(cl_reader_config.mdt_def);
+    cl_reader_config.mdt_count = 0;
+
+    return 0;
 }
 
 CU_TestInfo changelog_suite[] = {
@@ -388,5 +1400,19 @@ CU_TestInfo changelog_suite[] = {
     UNIT_TEST_INFO(process_log_rec_rename_ext_rec_one_zero_tfid_test),
     UNIT_TEST_INFO(process_log_rec_rename_ext_rec_non_zero_tfid_test),
     UNIT_TEST_INFO(process_log_rec_unlink),
+    UNIT_TEST_INFO(unlink_compact_create_unlink_test),
+    UNIT_TEST_INFO(unlink_compact_create_unlink_final_test),
+    UNIT_TEST_INFO(unlink_compact_create_rename_test),
+    UNIT_TEST_INFO(unlink_compact_mkdir_rename_test),
+    UNIT_TEST_INFO(unlink_compact_mkdir_rmdir_test),
+    UNIT_TEST_INFO(unlink_compact_ext_unlink_test),
+    UNIT_TEST_INFO(unlink_compact_ext_rmdir_test),
+    UNIT_TEST_INFO(unlink_compact_ext_rename_test),
+    UNIT_TEST_INFO(unlink_compact_hardlink_unlink_test),
+    UNIT_TEST_INFO(unlink_compact_hardlink_unlink_final_test),
+    UNIT_TEST_INFO(unlink_compact_hardlink_rename_test),
+    UNIT_TEST_INFO(unlink_compact_softlink_unlink_test),
+    UNIT_TEST_INFO(unlink_compact_softlink_unlink_final_test),
+    UNIT_TEST_INFO(unlink_compact_softlink_rename_test),
     CU_TEST_INFO_NULL
 };

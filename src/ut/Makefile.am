@@ -19,8 +19,8 @@ ut_LDADD=$(top_srcdir)/src/CUnit/CUnit/Sources/libcunit.la \
 	$(top_srcdir)/src/chglog_reader/libchglog_rd.la \
 	$(top_srcdir)/src/entry_processor/libentryproc.la \
 	$(top_srcdir)/src/cfg_parsing/librbhcfg.la \
-	$(top_srcdir)/src/list_mgr/liblistmgr.la \
 	$(top_srcdir)/src/fs_scan/libfsscan.la \
+	$(top_srcdir)/src/list_mgr/liblistmgr.la \
 	$(top_srcdir)/src/policies/libpolicies.la \
 	$(top_srcdir)/src/cfg_parsing/libconfigparsing.la \
 	$(top_srcdir)/src/common/libcommontools.la
