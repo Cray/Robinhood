@@ -4376,8 +4376,8 @@ function test_info_collect
 	else
         [ "$DEBUG" = "1" ] && $LFS changelog lustre
 		echo "1-Reading changelogs..."
-		#$RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
-		$RH -f $RBH_CFG_DIR/$config_file --readlog -l FULL -L rh_chglogs.log  --once || error ""
+		$RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+		#$RH -f $RBH_CFG_DIR/$config_file --readlog -l FULL -L rh_chglogs.log  --once || error ""
 		nb_cr=4
 	fi
 	check_db_error rh_chglogs.log

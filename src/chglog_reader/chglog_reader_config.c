@@ -59,6 +59,7 @@ static void cl_reader_set_default_cfg(void *module_config)
    p_config->queue_max_size = 1000;
    p_config->queue_max_age = 5; /* 5s */
    p_config->queue_check_interval = 1; /* every second */
+   p_config->compact_queue = false; /* do not compact operation queue */
    p_config->mds_has_lu543 = false;
    p_config->mds_has_lu1331 = false;
    p_config->dump_file[0] = '\0'; /* no dump file */
@@ -82,6 +83,7 @@ static void cl_reader_write_default(FILE *output)
     print_line(output, 1, "queue_max_size   : 1000");
     print_line(output, 1, "queue_max_age    : 5s");
     print_line(output, 1, "queue_check_interval : 1s");
+    print_line(output, 1, "compacting       : no");
     print_line(output, 1, "mds_has_lu543    : no");
     print_line(output, 1, "mds_has_lu1331   : no");
     print_line(output, 1, "dump_file        : (none)");
@@ -132,6 +134,12 @@ static void cl_reader_write_template(FILE *output)
     print_line(output, 1, "queue_max_size   = 1000 ;");
     print_line(output, 1, "queue_max_age    = 5s ;");
     print_line(output, 1, "queue_check_interval = 1s ;");
+    print_line(output, 1,
+               "# disable the following options if you are not interested in");
+    print_line(output, 1,
+               "# compactign in-memory changelog datbase before pushing ");
+    print_line(output,1 , "# changelog records into pipeline.");
+    print_line(output, 1, "compacting       = no ;");
     fprintf(output, "\n");
 
     print_line(output, 1, "# uncomment to dump all changelog records to the file");
@@ -226,7 +234,7 @@ static int cl_reader_read_cfg(config_file_t config, void *module_config,
     static const char *cl_cfg_allow[] =
     {
         "force_polling", "polling_interval", "batch_ack_count",
-        "queue_max_size", "queue_max_age", "queue_check_interval",
+        "queue_max_size", "queue_max_age", "queue_check_interval", "compacting",
         "mds_has_lu543", "mds_has_lu1331", MDT_DEF_BLOCK, "dump_file",
         NULL
     };
@@ -243,6 +251,7 @@ static int cl_reader_read_cfg(config_file_t config, void *module_config,
             &p_config->queue_max_age, 0},
         {"queue_check_interval",PT_DURATION, PFLG_NOT_NULL|PFLG_POSITIVE,
             &p_config->queue_check_interval, 0},
+        {"compacting", PT_BOOL, 0, &p_config->compact_queue, 0},
         {"mds_has_lu543", PT_BOOL, 0, &p_config->mds_has_lu543, 0},
         {"mds_has_lu1331", PT_BOOL, 0, &p_config->mds_has_lu1331, 0},
         {"dump_file", PT_STRING, PFLG_ABSOLUTE_PATH | PFLG_NO_WILDCARDS,
@@ -339,6 +348,8 @@ static int cl_reader_reload_cfg(chglog_reader_config_t *cfg)
     SCALAR_PARAM_UPDT(cfg, queue_max_size, CHGLOG_CFG_BLOCK, "queue_max_size", "%u", );
     SCALAR_PARAM_UPDT(cfg, queue_max_age, CHGLOG_CFG_BLOCK, "queue_max_age", "%ld", );
     SCALAR_PARAM_UPDT(cfg, queue_check_interval, CHGLOG_CFG_BLOCK, "queue_check_interval", "%ld", );
+    SCALAR_PARAM_UPDT(cfg, compact_queue, CHGLOG_CFG_BLOCK, "compacting", "%s",
+                      bool2str);
 
     if (cfg->mds_has_lu543 != cl_reader_config.mds_has_lu543)
         NO_PARAM_UPDT_MSG(CHGLOG_CFG_BLOCK, "mds_has_lu543");
