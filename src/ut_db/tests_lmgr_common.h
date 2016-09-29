@@ -88,6 +88,7 @@ int lhsm_archive_test(void *data, void**result);
 int mkdir_test(void *data, void **result);
 int rmdir_test(void *data, void **result);
 int touch_test(void *data, void **result);
+int unlink_test(void *data, void **result);
 
 int get_fids_shuffled(void);
 void free_fids(void);

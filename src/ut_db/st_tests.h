@@ -35,6 +35,8 @@ struct st_test_info test_infos[] = {
               "RMDIR SQL sequence"),
     TEST_INFO(free_fids_init, get_next_free_fid, free_fids, touch_test,
               "TOUCH SQL sequence"),
+    TEST_INFO(get_fids_shuffled, get_next_free_fid, free_fids, unlink_test,
+              "UNLINK SQL sequence"),
     NULL_TEST_INFO
 };
 

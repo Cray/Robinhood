@@ -42,6 +42,7 @@ void list_manager_lhsm_archive_test(void);
 void list_manager_mkdir_test(void);
 void list_manager_rmdir_test(void);
 void list_manager_touch_test(void);
+void list_manager_unlink_test(void);
 
 #define UNIT_TEST_INFO(test_name) \
 {#test_name, (test_name)}
@@ -87,7 +88,7 @@ int list_manager_suite_init(void)
 
 void list_manager_test_init(void)
 {
-    int          rc;
+    int rc;
 
     rc = test_setup();
     CU_ASSERT_EQUAL_FATAL(rc, 0);
@@ -388,6 +389,8 @@ void list_manager_mkdir_test(void)
     ListMgr_FreeAttrs(&results->sel_attrs);
     ListMgr_FreeAttrs(&results->ins_attrs);
     free(results);
+
+    free_fids();
 }
 
 struct connfail_test_data {
@@ -530,6 +533,8 @@ void list_manager_rmdir_test(void)
 
     rc = rmdir_test(dir_inputs, NULL);
     CU_ASSERT_EQUAL(rc, 0);
+
+    free_fids();
 }
 
 void list_manager_touch_test(void)
@@ -616,6 +621,20 @@ void list_manager_touch_test(void)
     ListMgr_FreeAttrs(&results->sel_attrs);
     ListMgr_FreeAttrs(&results->ins_attrs);
     free(results);
+
+    free_fids();
+}
+
+void list_manager_unlink_test(void)
+{
+    int        rc;
+    entry_id_t id;
+
+    rc = get_min_file_fid(&id);
+    CU_ASSERT_EQUAL(rc, 0);
+
+    rc = unlink_test(&id, NULL);
+    CU_ASSERT_EQUAL(rc, 0);
 }
 
 CU_TestInfo list_manager_suite[] = {
@@ -626,5 +645,6 @@ CU_TestInfo list_manager_suite[] = {
     UNIT_TEST_INFO(list_manager_mkdir_test),
     UNIT_TEST_INFO(list_manager_rmdir_test),
     UNIT_TEST_INFO(list_manager_touch_test),
+    UNIT_TEST_INFO(list_manager_unlink_test),
     CU_TEST_INFO_NULL
 };

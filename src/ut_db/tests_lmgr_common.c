@@ -1049,3 +1049,67 @@ done:
 
     return rc;
 }
+
+int unlink_test(void *data, void **result)
+{
+    int            rc;
+    sm_instance_t *sm_lhsm;
+    entry_id_t    *fid = data;
+    attr_set_t     sel_attrs;
+    attr_set_t     del_attrs;
+
+    (void)result; /* This test produces no output. */
+
+    if (fid == NULL)
+        return EINVAL;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    ATTR_SET_INIT_ST(&sel_attrs);
+    ATTR_SET_INIT_ST(&del_attrs);
+
+    /* Prepare SELECT SQL statement like:
+     * SELECT size,type,lhsm_status,link,this_path(parent_id,name) FROM ENTRIES
+     * LEFT JOIN ANNEX_INFO ON ENTRIES.id=ANNEX_INFO.id LEFT JOIN NAMES ON
+     * ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x4:0x0'
+     */
+    ATTR_MASK_SET(&sel_attrs, size);
+    ATTR_MASK_SET(&sel_attrs, type);
+    ATTR_MASK_STATUS_SET(&sel_attrs, sm_lhsm->smi_index);
+    ATTR_MASK_SET(&sel_attrs, link);
+    ATTR_MASK_SET(&sel_attrs, fullpath);
+    ATTR_MASK_SET(&sel_attrs, parent_id);
+    ATTR_MASK_SET(&sel_attrs, name);
+
+    rc = ListMgr_Get(&mgr, fid, &sel_attrs);
+    if (rc != 0)
+        goto done;
+
+    /*
+     * DELETE M.*,A.*,I.*,S.* FROM ENTRIES M LEFT JOIN ANNEX_INFO A ON
+     * M.id = A.id LEFT JOIN STRIPE_INFO I ON M.id = I.id LEFT JOIN STRIPE_ITEMS
+     * S ON M.id = S.id WHERE M.id='0x200000401:0x4:0x0'
+     *
+     * DELETE FROM NAMES WHERE pkn=sha1(CONCAT('0x200000007:0x1:0x0','/','789'))
+     * AND id='0x200000401:0x4:0x0'
+    */
+
+    ATTR_MASK_SET(&del_attrs, parent_id);
+    ATTR_MASK_SET(&del_attrs, name);
+
+    memcpy(&ATTR(&del_attrs, parent_id), &ATTR(&sel_attrs, parent_id),
+           sizeof(ATTR(&sel_attrs, parent_id)));
+    strcpy(ATTR(&del_attrs, name), ATTR(&sel_attrs, name));
+
+    rc = ListMgr_Remove(&mgr, fid, &del_attrs, true);
+
+done:
+    ListMgr_FreeAttrs(&sel_attrs);
+    ListMgr_FreeAttrs(&del_attrs);
+
+    return rc;
+}
