@@ -41,6 +41,7 @@ void list_manager_connfail_test(void);
 void list_manager_lhsm_archive_test(void);
 void list_manager_mkdir_test(void);
 void list_manager_rmdir_test(void);
+void list_manager_touch_test(void);
 
 #define UNIT_TEST_INFO(test_name) \
 {#test_name, (test_name)}
@@ -316,9 +317,9 @@ void list_manager_mkdir_test(void)
     if (sm_lhsm == NULL)
         return;
 
-    rc = mkdir_test_init();
+    rc = free_fids_init();
     CU_ASSERT_EQUAL(rc, 0);
-    dir_inputs = get_next_dir_data();
+    dir_inputs = get_next_free_fid();
     CU_ASSERT_PTR_NOT_NULL(dir_inputs);
     if( dir_inputs == NULL)
         return;
@@ -345,7 +346,7 @@ void list_manager_mkdir_test(void)
     ATTR_MASK_SET(&changed_attrs, name);
     ATTR_MASK_SET(&changed_attrs, path_update);
 
-    rc = ListMgr_Get(&mgr, &((struct dir_test_data*)dir_inputs)->dir_fid,
+    rc = ListMgr_Get(&mgr, &((struct free_fids_test_data*)dir_inputs)->fid,
                      &changed_attrs);
     CU_ASSERT_EQUAL(rc, 0);
 
@@ -524,11 +525,97 @@ void list_manager_rmdir_test(void)
 
     rc = rmdir_test_init();
     CU_ASSERT_EQUAL(rc, 0);
-    dir_inputs = get_next_dir_data();
+    dir_inputs = get_next_free_fid();
     CU_ASSERT_PTR_NOT_NULL(dir_inputs);
 
     rc = rmdir_test(dir_inputs, NULL);
     CU_ASSERT_EQUAL(rc, 0);
+}
+
+void list_manager_touch_test(void)
+{
+    int                     rc;
+    struct touch_test_data *results;
+    void                   *file_inputs;
+    attr_set_t              changed_attrs;
+    sm_instance_t          *sm_lhsm;
+
+    sm_lhsm = LHSM_SMI;
+    CU_ASSERT_PTR_NOT_NULL(sm_lhsm);
+    if (sm_lhsm == NULL)
+        return;
+
+    rc = free_fids_init();
+    CU_ASSERT_EQUAL(rc, 0);
+    file_inputs = get_next_free_fid();
+    CU_ASSERT_PTR_NOT_NULL(file_inputs);
+    if( file_inputs == NULL)
+        return;
+
+    rc = touch_test(file_inputs, (void**)&results);
+    CU_ASSERT_EQUAL(rc, 0);
+
+    ATTR_SET_INIT_ST(&changed_attrs);
+    ATTR_MASK_SET(&changed_attrs, size);
+    ATTR_MASK_SET(&changed_attrs, fullpath);
+    ATTR_MASK_SET(&changed_attrs, owner);
+    ATTR_MASK_SET(&changed_attrs, gr_name);
+    ATTR_MASK_SET(&changed_attrs, blocks);
+    ATTR_MASK_SET(&changed_attrs, creation_time);
+    ATTR_MASK_SET(&changed_attrs, last_access);
+    ATTR_MASK_SET(&changed_attrs, last_mod);
+    ATTR_MASK_SET(&changed_attrs, type);
+    ATTR_MASK_SET(&changed_attrs, mode);
+    ATTR_MASK_SET(&changed_attrs, nlink);
+    ATTR_MASK_SET(&changed_attrs, md_update);
+    ATTR_MASK_SET(&changed_attrs, fileclass);
+    ATTR_MASK_SET(&changed_attrs, class_update);
+    ATTR_MASK_SET(&changed_attrs, parent_id);
+    ATTR_MASK_SET(&changed_attrs, name);
+    ATTR_MASK_SET(&changed_attrs, path_update);
+
+    rc = ListMgr_Get(&mgr, &((struct free_fids_test_data*)file_inputs)->fid,
+                     &changed_attrs);
+    CU_ASSERT_EQUAL(rc, 0);
+
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, size),
+                    ATTR(&results->ins_attrs, size));
+    CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, owner),
+                           ATTR(&results->ins_attrs, owner));
+    CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, gr_name),
+                           ATTR(&results->ins_attrs, gr_name));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, blocks),
+                    ATTR(&results->ins_attrs, blocks));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, creation_time),
+                    ATTR(&results->ins_attrs, creation_time));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, last_access),
+                    ATTR(&results->ins_attrs, last_access));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, last_mod),
+                    ATTR(&results->ins_attrs, last_mod));
+    CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, type),
+                           ATTR(&results->ins_attrs, type));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, mode),
+                    ATTR(&results->ins_attrs, mode));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, nlink),
+                    ATTR(&results->ins_attrs, nlink));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, md_update),
+                    ATTR(&results->ins_attrs, md_update));
+    CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, fileclass),
+                           ATTR(&results->ins_attrs, fileclass));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, class_update),
+                    ATTR(&results->ins_attrs, class_update));
+    CU_ASSERT_EQUAL(memcmp(&ATTR(&changed_attrs, parent_id),
+                           &ATTR(&results->ins_attrs, parent_id),
+                           sizeof(ATTR(&changed_attrs, parent_id))), 0);
+    CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, name),
+                           ATTR(&results->ins_attrs, name));
+    CU_ASSERT_EQUAL(ATTR(&changed_attrs, path_update),
+                    ATTR(&results->ins_attrs, path_update));
+
+    ListMgr_FreeAttrs(&changed_attrs);
+    ListMgr_FreeAttrs(&results->sel_attrs);
+    ListMgr_FreeAttrs(&results->ins_attrs);
+    free(results);
 }
 
 CU_TestInfo list_manager_suite[] = {
@@ -538,5 +625,6 @@ CU_TestInfo list_manager_suite[] = {
     UNIT_TEST_INFO(list_manager_lhsm_archive_test),
     UNIT_TEST_INFO(list_manager_mkdir_test),
     UNIT_TEST_INFO(list_manager_rmdir_test),
+    UNIT_TEST_INFO(list_manager_touch_test),
     CU_TEST_INFO_NULL
 };

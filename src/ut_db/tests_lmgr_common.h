@@ -87,6 +87,7 @@ int chmod_test(void *data, void **result);
 int lhsm_archive_test(void *data, void**result);
 int mkdir_test(void *data, void **result);
 int rmdir_test(void *data, void **result);
+int touch_test(void *data, void **result);
 
 int get_fids_shuffled(void);
 void free_fids(void);
@@ -95,16 +96,16 @@ void *get_next_fid(void);
 int get_max_fid(entry_id_t *id);
 int inc_fid(entry_id_t *id);
 
-struct dir_test_data {
+struct free_fids_test_data {
     /** Lustre uses FID that is not present in @ref MAIN_TABLE as FS FID. */
     entry_id_t fs_fid;
-    entry_id_t dir_fid;
-    int        dir_number;
+    entry_id_t fid;
+    int        number;
 };
 
-int mkdir_test_init(void);
+int free_fids_init(void);
 int rmdir_test_init(void);
-void *get_next_dir_data(void);
+void *get_next_free_fid(void);
 
 #define LHSM_SMI smi_by_name("lhsm")
 
@@ -120,7 +121,7 @@ const char *get_cl_last_committed_name(void);
 do {                                    \
     ATTR_MASK_INIT(_a);                 \
     (_a)->attr_values.sm_status = NULL; \
-    (_a)->attr_values.sm_info = NULL;    \
+    (_a)->attr_values.sm_info = NULL;   \
 } while (false)
 
 struct chmod_test_data {
@@ -136,6 +137,11 @@ struct lhsm_archive_test_data {
 };
 
 struct mkdir_test_data {
+    attr_set_t sel_attrs;
+    attr_set_t ins_attrs;
+};
+
+struct touch_test_data {
     attr_set_t sel_attrs;
     attr_set_t ins_attrs;
 };

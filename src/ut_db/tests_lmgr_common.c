@@ -669,11 +669,11 @@ int inc_fid(entry_id_t *id)
 
 int mkdir_test(void *data, void **result)
 {
-    struct mkdir_test_data *attr_sets;
-    int                     rc;
-    sm_instance_t          *sm_lhsm;
-    char                    print_buffer[20];
-    struct dir_test_data   *test_data = data;
+    struct mkdir_test_data     *attr_sets;
+    int                         rc;
+    sm_instance_t              *sm_lhsm;
+    char                        print_buffer[20];
+    struct free_fids_test_data *test_data = data;
 
     if (test_data == NULL)
         return EINVAL;
@@ -698,7 +698,7 @@ int mkdir_test(void *data, void **result)
     ATTR_MASK_SET(&attr_sets->sel_attrs, size);
     ATTR_MASK_SET(&attr_sets->sel_attrs, fullpath);
 
-    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &attr_sets->sel_attrs);
+    rc = ListMgr_Get(&mgr, &test_data->fid, &attr_sets->sel_attrs);
     if (rc != ENOENT)
         goto done;
 
@@ -751,15 +751,13 @@ int mkdir_test(void *data, void **result)
                                                      md_update) + 1;
     memcpy(&ATTR(&attr_sets->ins_attrs, parent_id), &test_data->fs_fid,
            sizeof(test_data->fs_fid));
-    snprintf(print_buffer, sizeof(print_buffer), "dir%i",
-             test_data->dir_number);
-    ++test_data->dir_number;
+    snprintf(print_buffer, sizeof(print_buffer), "dir%i", test_data->number);
+    ++test_data->number;
     strcpy(ATTR(&attr_sets->ins_attrs, name), print_buffer);
     ATTR(&attr_sets->ins_attrs, path_update) = ATTR(&attr_sets->ins_attrs,
                                                      class_update) + 1;
 
-    rc = ListMgr_Insert(&mgr, &test_data->dir_fid, &attr_sets->ins_attrs,
-                        false);
+    rc = ListMgr_Insert(&mgr, &test_data->fid, &attr_sets->ins_attrs, false);
     if (rc != 0)
         goto done;
 
@@ -773,44 +771,45 @@ done:
     return rc;
 }
 
-static struct dir_test_data dir_data;
+static struct free_fids_test_data free_fids_data;
 
-int mkdir_test_init(void)
+int free_fids_init(void)
 {
     int rc;
 
     if ((rc = get_fids_shuffled()) != 0)
         return rc;
 
-    if ((rc = get_max_fid(&dir_data.fs_fid)) != 0)
+    if ((rc = get_max_fid(&free_fids_data.fs_fid)) != 0)
         return rc;
-    if ((rc = inc_fid(&dir_data.fs_fid)) != 0)
+    if ((rc = inc_fid(&free_fids_data.fs_fid)) != 0)
         return rc;
 
-    memcpy(&dir_data.dir_fid, &dir_data.fs_fid, sizeof(dir_data.dir_fid));
-    dir_data.dir_number = 0;
+    memcpy(&free_fids_data.fid, &free_fids_data.fs_fid,
+           sizeof(free_fids_data.fid));
+    free_fids_data.number = 0;
 
     return 0;
 }
 
-void *get_next_dir_data(void)
+void *get_next_free_fid(void)
 {
     int rc;
 
-    rc = inc_fid(&dir_data.dir_fid);
+    rc = inc_fid(&free_fids_data.fid);
     if (rc != 0)
         return NULL;
 
-    return &dir_data;
+    return &free_fids_data;
 }
 
 int rmdir_test(void *data, void **result)
 {
-    int                   rc;
-    char                  print_buffer[20];
-    struct dir_test_data *test_data = data;
-    attr_set_t            sel_attrs;
-    attr_set_t            del_attrs;
+    int                         rc;
+    char                        print_buffer[20];
+    struct free_fids_test_data *test_data = data;
+    attr_set_t                  sel_attrs;
+    attr_set_t                  del_attrs;
 
     (void)result; /* This test produces no output. */
 
@@ -827,7 +826,7 @@ int rmdir_test(void *data, void **result)
     ATTR_MASK_SET(&sel_attrs, size);
     ATTR_MASK_SET(&sel_attrs, fullpath);
 
-    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &sel_attrs);
+    rc = ListMgr_Get(&mgr, &test_data->fid, &sel_attrs);
     if (rc != 0)
         goto done;
 
@@ -844,12 +843,11 @@ int rmdir_test(void *data, void **result)
 
     memcpy(&ATTR(&del_attrs, parent_id), &test_data->fs_fid,
            sizeof(test_data->fs_fid));
-    snprintf(print_buffer, sizeof(print_buffer), "dir%i",
-             test_data->dir_number);
-    ++test_data->dir_number;
+    snprintf(print_buffer, sizeof(print_buffer), "dir%i", test_data->number);
+    ++test_data->number;
     strcpy(ATTR(&del_attrs, name), print_buffer);
 
-    rc = ListMgr_Remove(&mgr, &test_data->dir_fid, &del_attrs, true);
+    rc = ListMgr_Remove(&mgr, &test_data->fid, &del_attrs, true);
 
 done:
     ListMgr_FreeAttrs(&sel_attrs);
@@ -864,12 +862,12 @@ int rmdir_test_init(void)
     void *mkdir_data;
     int   i;
 
-    rc = mkdir_test_init();
+    rc = free_fids_init();
     if (rc != 0)
         return rc;
 
     for (i = 0; i < n_test_records; ++i) {
-        mkdir_data = get_next_dir_data();
+        mkdir_data = get_next_free_fid();
         if (mkdir_data == NULL)
             return ENODATA;
 
@@ -878,8 +876,176 @@ int rmdir_test_init(void)
             return rc;
     }
 
-    memcpy(&dir_data.dir_fid, &dir_data.fs_fid, sizeof(dir_data.dir_fid));
-    dir_data.dir_number = 0;
+    memcpy(&free_fids_data.fid, &free_fids_data.fs_fid,
+           sizeof(free_fids_data.fid));
+    free_fids_data.number = 0;
 
     return 0;
+}
+
+int touch_test(void *data, void **result)
+{
+    struct touch_test_data     *attr_sets;
+    int                         rc;
+    sm_instance_t              *sm_lhsm;
+    char                        print_buffer[20];
+    struct free_fids_test_data *test_data = data;
+    attr_set_t                  del_attrs;
+    stripe_items_t              items = {0};
+    stripe_info_t               info;
+
+    if (test_data == NULL)
+        return EINVAL;
+
+    attr_sets = malloc(sizeof(*attr_sets));
+    if (result != NULL)
+        *result = attr_sets;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    ATTR_SET_INIT_ST(&attr_sets->sel_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->ins_attrs);
+    ATTR_SET_INIT_ST(&del_attrs);
+
+    /* Prepare SELECT SQL statement like:
+     * SELECT size,lhsm_status,this_path(parent_id,name) FROM ENTRIES LEFT JOIN
+     * NAMES ON ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x6:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->sel_attrs, size);
+    ATTR_MASK_SET(&attr_sets->sel_attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attr_sets->sel_attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, &test_data->fid, &attr_sets->sel_attrs);
+    if (rc != ENOENT)
+        goto done;
+
+    /*
+     * INSERT INTO ENTRIES(id,owner,gr_name,size,blocks,creation_time,
+     * last_access,last_mod,type,mode,nlink,md_update,fileclass,class_update,
+     * lhsm_status,lhsm_norels,lhsm_noarch,lhsm_lstarc,lhsm_lstrst) VALUES
+     * ('0x200000401:0x6:0x0','root','root',0,0,1475357682,1475357682,
+     * 1475357682,'file',420,1,1475357688,'+empty_files+',1475357688,'new',0,0,
+     * 0,0)
+     *
+     * INSERT INTO NAMES(id,parent_id,name,path_update,pkn) VALUES
+     * ('0x200000401:0x6:0x0','0x200000007:0x1:0x0','b12.txt',1475357688,
+     * sha1(CONCAT(parent_id,'/',name))) ON DUPLICATE KEY UPDATE id=VALUES(id),
+     * parent_id=VALUES(parent_id),name=VALUES(name),
+     * path_update=VALUES(path_update)
+     */
+    ATTR_MASK_SET(&attr_sets->ins_attrs, owner);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, gr_name);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, size);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, blocks);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, creation_time);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, last_access);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, last_mod);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, type);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, mode);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, nlink);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, md_update);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, fileclass);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, class_update);
+    ATTR_MASK_STATUS_SET(&attr_sets->ins_attrs, sm_lhsm->smi_index);
+    ATTR_MASK_INFO_SET(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_RELEASE);
+    ATTR_MASK_INFO_SET(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_ARCHIVE);
+    ATTR_MASK_INFO_SET(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_ARCHIVE);
+    ATTR_MASK_INFO_SET(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_RESTORE);
+
+    ATTR_MASK_SET(&attr_sets->ins_attrs, parent_id);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, name);
+    ATTR_MASK_SET(&attr_sets->ins_attrs, path_update);
+
+    strcpy(ATTR(&attr_sets->ins_attrs, owner), "root");
+    strcpy(ATTR(&attr_sets->ins_attrs, gr_name), "root");
+    ATTR(&attr_sets->ins_attrs, size) = 0;
+    ATTR(&attr_sets->ins_attrs, blocks) = 0;
+    ATTR(&attr_sets->ins_attrs, creation_time) = time(NULL);
+    ATTR(&attr_sets->ins_attrs, last_access) = ATTR(&attr_sets->ins_attrs,
+                                                     creation_time) + 1;
+    ATTR(&attr_sets->ins_attrs, last_mod) = ATTR(&attr_sets->ins_attrs,
+                                                  last_access) + 1;
+    strcpy(ATTR(&attr_sets->ins_attrs, type), "file");
+    ATTR(&attr_sets->ins_attrs, mode) = 420;
+    ATTR(&attr_sets->ins_attrs, nlink) = 1;
+    ATTR(&attr_sets->ins_attrs, md_update) = ATTR(&attr_sets->ins_attrs,
+                                                  last_mod) + 1;
+    strcpy(ATTR(&attr_sets->ins_attrs, fileclass), "test_file_class");
+    ATTR(&attr_sets->ins_attrs, class_update) = ATTR(&attr_sets->ins_attrs,
+                                                     md_update) + 1;
+
+    sm_status_ensure_alloc(&attr_sets->ins_attrs.attr_values.sm_status);
+    sm_info_ensure_alloc(&attr_sets->ins_attrs.attr_values.sm_info);
+    /* The next line uses direct literal - as in 'lhsm' status manager. */
+    STATUS_ATTR(&attr_sets->ins_attrs, sm_lhsm->smi_index) = "new";
+    SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_RELEASE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_RELEASE) = 0;
+    SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_NO_ARCHIVE) = 0;
+   SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_ARCHIVE) = 0;
+    SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_RESTORE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->ins_attrs, sm_lhsm, ATTR_LAST_RESTORE) = 0;
+
+    memcpy(&ATTR(&attr_sets->ins_attrs, parent_id), &test_data->fs_fid,
+           sizeof(test_data->fs_fid));
+    snprintf(print_buffer, sizeof(print_buffer), "file%i", test_data->number);
+    ++test_data->number;
+    strcpy(ATTR(&attr_sets->ins_attrs, name), print_buffer);
+    ATTR(&attr_sets->ins_attrs, path_update) = ATTR(&attr_sets->ins_attrs,
+                                                     class_update) + 1;
+
+    rc = ListMgr_Insert(&mgr, &test_data->fid, &attr_sets->ins_attrs, false);
+    if (rc != 0)
+        goto done;
+
+    /*
+     * INSERT INTO STRIPE_INFO (id,validator,stripe_count,stripe_size,pool_name)
+     * VALUES ('0x200000401:0x6:0x0',0,1,1048576,'') ON DUPLICATE KEY UPDATE
+     * validator=VALUES(validator),stripe_count=VALUES(stripe_count),
+     * stripe_size=VALUES(stripe_size),pool_name=VALUES(pool_name)
+     *
+     * DELETE FROM STRIPE_ITEMS WHERE id='0x200000401:0x6:0x0'
+     *
+     * INSERT INTO STRIPE_ITEMS (id,stripe_index,ostidx,details) VALUES
+     * ('0x200000401:0x6:0x0',0,2,x'0000000002000000000000000000000000000000')
+     */
+    info.stripe_size = 1048576;
+    info.stripe_count = 1;
+    info.pool_name[0] = '\0';
+    info.validator = 0;
+
+    items.count = 1;
+    items.stripe = (stripe_item_t *)MemAlloc(sizeof(stripe_item_t));
+    if (items.stripe == NULL)
+        goto done;
+
+    items.stripe->ost_idx = 2;
+    items.stripe->ost_gen = 0;
+    items.stripe->obj_id = 0;
+    items.stripe->obj_seq = 0;
+    items.stripe->ost_idx =2;
+
+    rc = ListMgr_SetStripe(&mgr, &test_data->fid, &info, &items);
+   if (rc != 0)
+        goto done;
+
+done:
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->sel_attrs);
+        ListMgr_FreeAttrs(&attr_sets->ins_attrs);
+        free(attr_sets);
+    }
+    ListMgr_FreeAttrs(&del_attrs);
+    free(items.stripe);
+
+    return rc;
 }

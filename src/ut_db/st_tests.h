@@ -29,10 +29,12 @@ struct st_test_info test_infos[] = {
               "HSM ARCHIVE SQL sequence"),
     TEST_INFO(get_fids_shuffled, get_next_fid, free_fids, chmod_test,
               "CHMOD SQL sequence"),
-    TEST_INFO(mkdir_test_init, get_next_dir_data, free_fids, mkdir_test,
+    TEST_INFO(free_fids_init, get_next_free_fid, free_fids, mkdir_test,
               "MKDIR SQL sequence"),
-    TEST_INFO(rmdir_test_init, get_next_dir_data, free_fids, rmdir_test,
+    TEST_INFO(rmdir_test_init, get_next_free_fid, free_fids, rmdir_test,
               "RMDIR SQL sequence"),
+    TEST_INFO(free_fids_init, get_next_free_fid, free_fids, touch_test,
+              "TOUCH SQL sequence"),
     NULL_TEST_INFO
 };
 
