@@ -1,0 +1,5 @@
+[gerrit]
+	host=es-gerrit
+	project=robinhood.git
+	defaultbranch=master
+
