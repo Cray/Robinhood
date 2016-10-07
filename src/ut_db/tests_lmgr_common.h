@@ -85,6 +85,7 @@ struct st_test_info {
 
 int chmod_test(void *data, void **result);
 int lhsm_archive_test(void *data, void**result);
+int lhsm_release_test(void *data, void**result);
 int mkdir_test(void *data, void **result);
 int rmdir_test(void *data, void **result);
 
@@ -106,6 +107,8 @@ int mkdir_test_init(void);
 int rmdir_test_init(void);
 void *get_next_dir_data(void);
 
+int lhsm_release_test_init(void);
+
 #define LHSM_SMI smi_by_name("lhsm")
 
 /** Get ChangelogLastCommit full variable name according to loaded
@@ -123,9 +126,9 @@ do {                                    \
     (_a)->attr_values.sm_info = NULL;    \
 } while (false)
 
-struct chmod_test_data {
-    attr_set_t attrs;
-    attr_set_t upd_attrs;
+struct two_attrsets_data {
+    attr_set_t first;
+    attr_set_t second;
 };
 
 struct lhsm_archive_test_data {
@@ -133,11 +136,6 @@ struct lhsm_archive_test_data {
     attr_set_t updated1_attrs;
     attr_set_t updated2_attrs;
     attr_set_t updated3_attrs;
-};
-
-struct mkdir_test_data {
-    attr_set_t sel_attrs;
-    attr_set_t ins_attrs;
 };
 
 #endif

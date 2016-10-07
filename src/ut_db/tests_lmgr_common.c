@@ -299,8 +299,8 @@ void free_fids(void)
 
 int chmod_test(void *data, void **result)
 {
-    struct chmod_test_data *attr_sets;
-    int                     rc;
+    struct two_attrsets_data *attr_sets;
+    int                       rc;
 
     if (data == NULL)
         return EINVAL;
@@ -309,53 +309,53 @@ int chmod_test(void *data, void **result)
     if (result != NULL)
         *result = attr_sets;
 
-    ATTR_SET_INIT_ST(&attr_sets->attrs);
-    ATTR_SET_INIT_ST(&attr_sets->upd_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->first);
+    ATTR_SET_INIT_ST(&attr_sets->second);
 
-    ATTR_MASK_SET(&attr_sets->attrs, size);
-    ATTR_MASK_SET(&attr_sets->attrs, type);
-    ATTR_MASK_SET(&attr_sets->attrs, link);
-    ATTR_MASK_SET(&attr_sets->attrs, path_update);
-    ATTR_MASK_SET(&attr_sets->attrs, fullpath);
-    ATTR_MASK_STATUS_SET(&attr_sets->attrs, 0);
+    ATTR_MASK_SET(&attr_sets->first, size);
+    ATTR_MASK_SET(&attr_sets->first, type);
+    ATTR_MASK_SET(&attr_sets->first, link);
+    ATTR_MASK_SET(&attr_sets->first, path_update);
+    ATTR_MASK_SET(&attr_sets->first, fullpath);
+    ATTR_MASK_STATUS_SET(&attr_sets->first, 0);
 
-    rc = ListMgr_Get(&mgr, data, &attr_sets->attrs);
+    rc = ListMgr_Get(&mgr, data, &attr_sets->first);
     if (rc != 0)
         goto done;
 
-    ATTR_MASK_SET(&attr_sets->upd_attrs, owner);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, gr_name);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, blocks);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, last_access);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, last_mod);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, mode);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, nlink);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, md_update);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, fileclass);
-    ATTR_MASK_SET(&attr_sets->upd_attrs, class_update);
+    ATTR_MASK_SET(&attr_sets->second, owner);
+    ATTR_MASK_SET(&attr_sets->second, gr_name);
+    ATTR_MASK_SET(&attr_sets->second, blocks);
+    ATTR_MASK_SET(&attr_sets->second, last_access);
+    ATTR_MASK_SET(&attr_sets->second, last_mod);
+    ATTR_MASK_SET(&attr_sets->second, mode);
+    ATTR_MASK_SET(&attr_sets->second, nlink);
+    ATTR_MASK_SET(&attr_sets->second, md_update);
+    ATTR_MASK_SET(&attr_sets->second, fileclass);
+    ATTR_MASK_SET(&attr_sets->second, class_update);
 
-    strcpy(ATTR(&attr_sets->upd_attrs, owner), "root");
-    strcpy(ATTR(&attr_sets->upd_attrs, gr_name), "root");
-    ATTR(&attr_sets->upd_attrs, blocks) = 10;
-    ATTR(&attr_sets->upd_attrs, last_access) = time(NULL);
-    ATTR(&attr_sets->upd_attrs, last_mod) = ATTR(&attr_sets->upd_attrs,
+    strcpy(ATTR(&attr_sets->second, owner), "root");
+    strcpy(ATTR(&attr_sets->second, gr_name), "root");
+    ATTR(&attr_sets->second, blocks) = 10;
+    ATTR(&attr_sets->second, last_access) = time(NULL);
+    ATTR(&attr_sets->second, last_mod) = ATTR(&attr_sets->second,
                                                  last_access) + 1;
-    ATTR(&attr_sets->upd_attrs, mode) = 932;
-    ATTR(&attr_sets->upd_attrs, nlink) = 1;
-    ATTR(&attr_sets->upd_attrs, md_update) = ATTR(&attr_sets->upd_attrs,
+    ATTR(&attr_sets->second, mode) = 932;
+    ATTR(&attr_sets->second, nlink) = 1;
+    ATTR(&attr_sets->second, md_update) = ATTR(&attr_sets->second,
                                                   last_mod) + 1;
-    strcpy(ATTR(&attr_sets->upd_attrs, fileclass), "test_file_class");
-    ATTR(&attr_sets->upd_attrs, class_update) = ATTR(&attr_sets->upd_attrs,
+    strcpy(ATTR(&attr_sets->second, fileclass), "test_file_class");
+    ATTR(&attr_sets->second, class_update) = ATTR(&attr_sets->second,
                                                      md_update) + 1;
 
-    rc = ListMgr_Update(&mgr, data, &attr_sets->upd_attrs);
+    rc = ListMgr_Update(&mgr, data, &attr_sets->second);
     if (rc != 0)
         goto done;
 
 done:
     if (result == NULL) {
-        ListMgr_FreeAttrs(&attr_sets->attrs);
-        ListMgr_FreeAttrs(&attr_sets->upd_attrs);
+        ListMgr_FreeAttrs(&attr_sets->first);
+        ListMgr_FreeAttrs(&attr_sets->second);
         free(attr_sets);
     }
 
@@ -669,11 +669,11 @@ int inc_fid(entry_id_t *id)
 
 int mkdir_test(void *data, void **result)
 {
-    struct mkdir_test_data *attr_sets;
-    int                     rc;
-    sm_instance_t          *sm_lhsm;
-    char                    print_buffer[20];
-    struct dir_test_data   *test_data = data;
+    struct two_attrsets_data *attr_sets;
+    int                       rc;
+    sm_instance_t            *sm_lhsm;
+    char                      print_buffer[20];
+    struct dir_test_data     *test_data = data;
 
     if (test_data == NULL)
         return EINVAL;
@@ -688,17 +688,17 @@ int mkdir_test(void *data, void **result)
         goto done;
     }
 
-    ATTR_SET_INIT_ST(&attr_sets->sel_attrs);
-    ATTR_SET_INIT_ST(&attr_sets->ins_attrs);
+    ATTR_SET_INIT_ST(&attr_sets->first);
+    ATTR_SET_INIT_ST(&attr_sets->second);
 
     /* Prepare SELECT SQL statement like:
      * SELECT size, this_path(parent_id, name) FROM ENTRIES LEFT JOIN NAMES ON
      * ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x5:0x0'
      */
-    ATTR_MASK_SET(&attr_sets->sel_attrs, size);
-    ATTR_MASK_SET(&attr_sets->sel_attrs, fullpath);
+    ATTR_MASK_SET(&attr_sets->first, size);
+    ATTR_MASK_SET(&attr_sets->first, fullpath);
 
-    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &attr_sets->sel_attrs);
+    rc = ListMgr_Get(&mgr, &test_data->dir_fid, &attr_sets->first);
     if (rc != ENOENT)
         goto done;
 
@@ -715,58 +715,58 @@ int mkdir_test(void *data, void **result)
      * id=VALUES(id), parent_id=VALUES(parent_id), name=VALUES(name),
      * path_update=VALUES(path_update)
      */
-    ATTR_MASK_SET(&attr_sets->ins_attrs, owner);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, gr_name);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, size);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, blocks);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, creation_time);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, last_access);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, last_mod);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, type);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, mode);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, nlink);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, md_update);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, fileclass);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, class_update);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, parent_id);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, name);
-    ATTR_MASK_SET(&attr_sets->ins_attrs, path_update);
+    ATTR_MASK_SET(&attr_sets->second, owner);
+    ATTR_MASK_SET(&attr_sets->second, gr_name);
+    ATTR_MASK_SET(&attr_sets->second, size);
+    ATTR_MASK_SET(&attr_sets->second, blocks);
+    ATTR_MASK_SET(&attr_sets->second, creation_time);
+    ATTR_MASK_SET(&attr_sets->second, last_access);
+    ATTR_MASK_SET(&attr_sets->second, last_mod);
+    ATTR_MASK_SET(&attr_sets->second, type);
+    ATTR_MASK_SET(&attr_sets->second, mode);
+    ATTR_MASK_SET(&attr_sets->second, nlink);
+    ATTR_MASK_SET(&attr_sets->second, md_update);
+    ATTR_MASK_SET(&attr_sets->second, fileclass);
+    ATTR_MASK_SET(&attr_sets->second, class_update);
+    ATTR_MASK_SET(&attr_sets->second, parent_id);
+    ATTR_MASK_SET(&attr_sets->second, name);
+    ATTR_MASK_SET(&attr_sets->second, path_update);
 
-    strcpy(ATTR(&attr_sets->ins_attrs, owner), "root");
-    strcpy(ATTR(&attr_sets->ins_attrs, gr_name), "root");
-    ATTR(&attr_sets->ins_attrs, size) = 24850;
-    ATTR(&attr_sets->ins_attrs, blocks) = 1;
-    ATTR(&attr_sets->ins_attrs, creation_time) = time(NULL);
-    ATTR(&attr_sets->ins_attrs, last_access) = ATTR(&attr_sets->ins_attrs,
+    strcpy(ATTR(&attr_sets->second, owner), "root");
+    strcpy(ATTR(&attr_sets->second, gr_name), "root");
+    ATTR(&attr_sets->second, size) = 24850;
+    ATTR(&attr_sets->second, blocks) = 1;
+    ATTR(&attr_sets->second, creation_time) = time(NULL);
+    ATTR(&attr_sets->second, last_access) = ATTR(&attr_sets->second,
                                                      creation_time) + 1;
-    ATTR(&attr_sets->ins_attrs, last_mod) = ATTR(&attr_sets->ins_attrs,
+    ATTR(&attr_sets->second, last_mod) = ATTR(&attr_sets->second,
                                                   last_access) + 1;
-    strcpy(ATTR(&attr_sets->ins_attrs, type), "dir");
-    ATTR(&attr_sets->ins_attrs, mode) = 420;
-    ATTR(&attr_sets->ins_attrs, nlink) = 1;
-    ATTR(&attr_sets->ins_attrs, md_update) = ATTR(&attr_sets->ins_attrs,
+    strcpy(ATTR(&attr_sets->second, type), "dir");
+    ATTR(&attr_sets->second, mode) = 420;
+    ATTR(&attr_sets->second, nlink) = 1;
+    ATTR(&attr_sets->second, md_update) = ATTR(&attr_sets->second,
                                                   last_mod) + 1;
-    strcpy(ATTR(&attr_sets->ins_attrs, fileclass), "test_dir_class");
-    ATTR(&attr_sets->ins_attrs, class_update) = ATTR(&attr_sets->ins_attrs,
+    strcpy(ATTR(&attr_sets->second, fileclass), "test_dir_class");
+    ATTR(&attr_sets->second, class_update) = ATTR(&attr_sets->second,
                                                      md_update) + 1;
-    memcpy(&ATTR(&attr_sets->ins_attrs, parent_id), &test_data->fs_fid,
+    memcpy(&ATTR(&attr_sets->second, parent_id), &test_data->fs_fid,
            sizeof(test_data->fs_fid));
     snprintf(print_buffer, sizeof(print_buffer), "dir%i",
              test_data->dir_number);
     ++test_data->dir_number;
-    strcpy(ATTR(&attr_sets->ins_attrs, name), print_buffer);
-    ATTR(&attr_sets->ins_attrs, path_update) = ATTR(&attr_sets->ins_attrs,
+    strcpy(ATTR(&attr_sets->second, name), print_buffer);
+    ATTR(&attr_sets->second, path_update) = ATTR(&attr_sets->second,
                                                      class_update) + 1;
 
-    rc = ListMgr_Insert(&mgr, &test_data->dir_fid, &attr_sets->ins_attrs,
+    rc = ListMgr_Insert(&mgr, &test_data->dir_fid, &attr_sets->second,
                         false);
     if (rc != 0)
         goto done;
 
 done:
     if (result == NULL) {
-        ListMgr_FreeAttrs(&attr_sets->sel_attrs);
-        ListMgr_FreeAttrs(&attr_sets->ins_attrs);
+        ListMgr_FreeAttrs(&attr_sets->first);
+        ListMgr_FreeAttrs(&attr_sets->second);
         free(attr_sets);
     }
 
@@ -882,4 +882,283 @@ int rmdir_test_init(void)
     dir_data.dir_number = 0;
 
     return 0;
+}
+
+static entry_id_t first_free_fid;
+
+int lhsm_release_test_init(void)
+{
+    int rc;
+
+    rc = get_fids_shuffled();
+    if (rc != 0)
+        return rc;
+
+    rc = get_max_fid(&first_free_fid);
+    if (rc != 0)
+        return rc;
+
+    return inc_fid(&first_free_fid);
+}
+
+int lhsm_release_test(void *data, void**result)
+{
+    struct two_attrsets_data *attr_sets;
+    attr_set_t                attrs;
+    int                       rc;
+    sm_instance_t            *sm_lhsm;
+    stripe_info_t             stripe_info;
+
+    if (data == NULL)
+        return EINVAL;
+
+    attr_sets = malloc(sizeof(*attr_sets));
+    if (result != NULL)
+        *result = attr_sets;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    /* Initialise all attribute sets. */
+    ATTR_SET_INIT_ST(&attr_sets->first);
+    ATTR_SET_INIT_ST(&attr_sets->second);
+    ATTR_SET_INIT_ST(&attrs);
+
+    /* SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x2:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->first, size);
+    ATTR_MASK_SET(&attr_sets->first, path_update);
+    ATTR_MASK_SET(&attr_sets->first, fullpath);
+    ATTR_MASK_STATUS_SET(&attr_sets->first, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attr_sets->first);
+    if (rc != 0)
+        goto done;
+
+    /** Prepare SQL statement like the following:
+     * \code{.unparsed}
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=1,
+     * last_access=1475834490, last_mod=1475834490, type='file', mode=420,
+     * nlink=1, md_update=1475834606, fileclass='++', class_update=1475834606,
+     * lhsm_status='released', lhsm_archid=1, lhsm_norels=0, lhsm_noarch=0 WHERE
+     * id='0x200000401:0x2:0x0'
+     * \endcode
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_MASK_SET(&attrs, owner);
+    ATTR_MASK_SET(&attrs, gr_name);
+    ATTR_MASK_SET(&attrs, blocks);
+    ATTR_MASK_SET(&attrs, last_access);
+    ATTR_MASK_SET(&attrs, last_mod);
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_SET(&attrs, mode);
+    ATTR_MASK_SET(&attrs, nlink);
+    ATTR_MASK_SET(&attrs, md_update);
+    ATTR_MASK_SET(&attrs, fileclass);
+    ATTR_MASK_SET(&attrs, class_update);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+    ATTR_MASK_INFO_SET(&attrs, sm_lhsm, ATTR_ARCHIVE_ID);
+    ATTR_MASK_INFO_SET(&attrs, sm_lhsm, ATTR_NO_RELEASE);
+    ATTR_MASK_INFO_SET(&attrs, sm_lhsm, ATTR_NO_ARCHIVE);
+
+    strcpy(ATTR(&attrs, owner), "2000");
+    strcpy(ATTR(&attrs, gr_name), "root");
+    ATTR(&attrs, blocks) = 0;
+    ATTR(&attrs, last_access) = time(NULL);
+    ATTR(&attrs, last_mod) =
+        ATTR(&attrs, last_access) + 1;
+    strcpy(ATTR(&attrs, type), "file");
+    ATTR(&attrs, mode) = 420;
+    ATTR(&attrs, nlink) = 1;
+    ATTR(&attrs, md_update) =
+        ATTR(&attrs, last_access) + 2;
+    strcpy(ATTR(&attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attrs, class_update) =
+        ATTR(&attrs, last_access) + 3;
+    sm_status_ensure_alloc(&attrs.attr_values.sm_status);
+    sm_info_ensure_alloc(&attrs.attr_values.sm_info);
+    /* The next line uses direct literal - as in 'lhsm' status manager. */
+    STATUS_ATTR(&attrs, sm_lhsm->smi_index) = "released";
+    SMI_INFO(&attrs, sm_lhsm, ATTR_ARCHIVE_ID) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attrs, sm_lhsm, ATTR_ARCHIVE_ID) = 1;
+    SMI_INFO(&attrs, sm_lhsm, ATTR_NO_RELEASE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attrs, sm_lhsm, ATTR_NO_RELEASE) = 0;
+    SMI_INFO(&attrs, sm_lhsm, ATTR_NO_ARCHIVE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attrs, sm_lhsm, ATTR_NO_ARCHIVE) = 0;
+
+    rc = ListMgr_Update(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    /* SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x2:0x0'
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_MASK_SET(&attrs, size);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    /* SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x3:0x0'
+     *                         ^^^
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_SET_INIT_ST(&attrs);
+    ATTR_MASK_SET(&attrs, size);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
+    if (rc != 2)
+        goto done;
+
+    /* Preparing SQL UPDATE like:
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=1,
+     * last_access=1475834490, last_mod=1475834490, type='file', mode=420,
+     * nlink=1, md_update=1475834606, fileclass='++', class_update=1475834606
+     * WHERE id='0x200000401:0x2:0x0'
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_MASK_SET(&attrs, owner);
+    ATTR_MASK_SET(&attrs, gr_name);
+    ATTR_MASK_SET(&attrs, blocks);
+    ATTR_MASK_SET(&attrs, last_access);
+    ATTR_MASK_SET(&attrs, last_mod);
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_SET(&attrs, mode);
+    ATTR_MASK_SET(&attrs, nlink);
+    ATTR_MASK_SET(&attrs, md_update);
+    ATTR_MASK_SET(&attrs, fileclass);
+    ATTR_MASK_SET(&attrs, class_update);
+
+    strcpy(ATTR(&attrs, owner), "2000");
+    strcpy(ATTR(&attrs, gr_name), "root");
+    ATTR(&attrs, blocks) = 0;
+    ATTR(&attrs, last_access) = time(NULL);
+    ATTR(&attrs, last_mod) =
+        ATTR(&attrs, last_access) + 1;
+    strcpy(ATTR(&attrs, type), "file");
+    ATTR(&attrs, mode) = 420;
+    ATTR(&attrs, nlink) = 1;
+    ATTR(&attrs, md_update) =
+        ATTR(&attrs, last_access) + 2;
+    strcpy(ATTR(&attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attrs, class_update) =
+        ATTR(&attrs, last_access) + 3;
+
+    rc = ListMgr_Update(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_SET_INIT_ST(&attrs);
+    /* SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x2:0x0'
+     */
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_SET_INIT_ST(&attrs);
+    /* SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x3:0x0'
+     *                         ^^^
+     */
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+
+    rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
+    if (rc != 2)
+        goto done;
+
+    /* Do not free attrs: we'll definitely do it later. */
+
+    /* Preparing UPDATE SQL statement like:
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=1,
+     * last_access=1475834490, last_mod=1475834490, type='file', mode=420,
+     * nlink=1, md_update=1475834606, fileclass='++', class_update=1475834606
+     * WHERE id='0x200000401:0x2:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->second, owner);
+    ATTR_MASK_SET(&attr_sets->second, gr_name);
+    ATTR_MASK_SET(&attr_sets->second, blocks);
+    ATTR_MASK_SET(&attr_sets->second, last_access);
+    ATTR_MASK_SET(&attr_sets->second, last_mod);
+    ATTR_MASK_SET(&attr_sets->second, type);
+    ATTR_MASK_SET(&attr_sets->second, mode);
+    ATTR_MASK_SET(&attr_sets->second, nlink);
+    ATTR_MASK_SET(&attr_sets->second, md_update);
+    ATTR_MASK_SET(&attr_sets->second, fileclass);
+    ATTR_MASK_SET(&attr_sets->second, class_update);
+
+    strcpy(ATTR(&attr_sets->second, owner), "2000");
+    strcpy(ATTR(&attr_sets->second, gr_name), "root");
+    ATTR(&attr_sets->second, blocks) = 0;
+    ATTR(&attr_sets->second, last_access) = time(NULL);
+    ATTR(&attr_sets->second, last_mod) =
+        ATTR(&attr_sets->second, last_access) + 1;
+    strcpy(ATTR(&attr_sets->second, type), "file");
+    ATTR(&attr_sets->second, mode) = 420;
+    ATTR(&attr_sets->second, nlink) = 1;
+    ATTR(&attr_sets->second, md_update) =
+        ATTR(&attr_sets->second, last_access) + 2;
+    strcpy(ATTR(&attr_sets->second, fileclass),
+           "system_test_file_class");
+    ATTR(&attr_sets->second, class_update) =
+        ATTR(&attr_sets->second, last_access) + 3;
+
+    rc = ListMgr_Update(&mgr, data, &attr_sets->second);
+    if (rc != 0)
+        goto done;
+
+    /* INSERT INTO STRIPE_INFO (id, validator, stripe_count, stripe_size,
+     * pool_name) VALUES ('0x200000401:0x2:0x0', 1, 1, 1048576, '') ON DUPLICATE
+     * KEY UPDATE validator=VALUES(validator),
+     * stripe_count=VALUES(stripe_count), stripe_size=VALUES(stripe_size),
+     * pool_name=VALUES(pool_name)
+     *
+     * DELETE FROM STRIPE_ITEMS WHERE id='0x200000401:0x2:0x0'
+     */
+    stripe_info.validator = 1;
+    stripe_info.stripe_count = 1;
+    stripe_info.stripe_size = 1048576;
+    stripe_info.pool_name[0] = '\000'; /* Empty */
+    rc = ListMgr_SetStripe(&mgr, data, &stripe_info, NULL);
+done:
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->first);
+        ListMgr_FreeAttrs(&attr_sets->second);
+        free(attr_sets);
+    }
+    ListMgr_FreeAttrs(&attrs);
+
+    return rc;
 }
