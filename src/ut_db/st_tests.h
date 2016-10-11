@@ -27,8 +27,10 @@
 struct st_test_info test_infos[] = {
     TEST_INFO(get_fids_shuffled, get_next_fid, free_fids, lhsm_archive_test,
               "HSM ARCHIVE SQL sequence"),
-    TEST_INFO(lhsm_release_test_init, get_next_fid, free_fids,
+    TEST_INFO(lhsm_release_restore_tests_init, get_next_fid, free_fids,
               lhsm_release_test, "HSM RELEASE SQL sequence"),
+    TEST_INFO(lhsm_release_restore_tests_init, get_next_fid, free_fids,
+              lhsm_restore_test, "HSM RESTORE SQL sequence"),
     TEST_INFO(get_fids_shuffled, get_next_fid, free_fids, chmod_test,
               "CHMOD SQL sequence"),
     TEST_INFO(mkdir_test_init, get_next_dir_data, free_fids, mkdir_test,

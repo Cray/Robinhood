@@ -886,7 +886,7 @@ int rmdir_test_init(void)
 
 static entry_id_t first_free_fid;
 
-int lhsm_release_test_init(void)
+int lhsm_release_restore_tests_init(void)
 {
     int rc;
 
@@ -1026,8 +1026,10 @@ int lhsm_release_test(void *data, void**result)
     ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
 
     rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
-    if (rc != 2)
+    if (rc != 2) {
+        rc = -1;
         goto done;
+    }
 
     /* Preparing SQL UPDATE like:
      * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=1,
@@ -1096,8 +1098,10 @@ int lhsm_release_test(void *data, void**result)
     ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
 
     rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
-    if (rc != 2)
+    if (rc != 2) {
+        rc = -1;
         goto done;
+    }
 
     /* Do not free attrs: we'll definitely do it later. */
 
@@ -1152,6 +1156,227 @@ int lhsm_release_test(void *data, void**result)
     stripe_info.stripe_size = 1048576;
     stripe_info.pool_name[0] = '\000'; /* Empty */
     rc = ListMgr_SetStripe(&mgr, data, &stripe_info, NULL);
+done:
+    if (result == NULL) {
+        ListMgr_FreeAttrs(&attr_sets->first);
+        ListMgr_FreeAttrs(&attr_sets->second);
+        free(attr_sets);
+    }
+    ListMgr_FreeAttrs(&attrs);
+
+    return rc;
+}
+
+int lhsm_restore_test(void *data, void**result)
+{
+    struct two_attrsets_data *attr_sets;
+    attr_set_t                attrs;
+    int                       rc;
+    sm_instance_t            *sm_lhsm;
+    stripe_info_t             stripe_info;
+    stripe_item_t             stripe_item;
+    stripe_items_t            stripe_items;
+    int                       i;
+
+    if (data == NULL)
+        return EINVAL;
+
+    attr_sets = malloc(sizeof(*attr_sets));
+    if (result != NULL)
+        *result = attr_sets;
+
+    sm_lhsm = LHSM_SMI;
+    if (sm_lhsm == NULL) {
+        rc = EINVAL;
+        goto done;
+    }
+
+    /* Initialise all attribute sets. */
+    ATTR_SET_INIT_ST(&attr_sets->first);
+    ATTR_SET_INIT_ST(&attr_sets->second);
+    ATTR_SET_INIT_ST(&attrs);
+
+    /* Requesting information for data FID - not present in DB.
+     * SELECT size, type, lhsm_status, link, path_update, this_path(parent_id,
+     * name) FROM ENTRIES LEFT JOIN ANNEX_INFO ON ENTRIES.id=ANNEX_INFO.id LEFT
+     * JOIN NAMES ON ENTRIES.id=NAMES.id WHERE ENTRIES.id='0x200000401:0x4:0x0'
+     */
+    ATTR_MASK_SET(&attrs, size);
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+    ATTR_MASK_SET(&attrs, link);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+
+    rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
+    if (rc != 2) {
+        rc = -1;
+        goto done;
+    }
+
+    /* Request information on actual FID - present in DB.
+     * SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x2:0x0'
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_SET_INIT_ST(&attrs);
+    ATTR_MASK_SET(&attrs, size);
+    ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+    ATTR_MASK_SET(&attrs, path_update);
+    ATTR_MASK_SET(&attrs, fullpath);
+
+    rc = ListMgr_Get(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    /* Select data for DFID (5 times by log) - not present in DB.
+     * SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x4:0x0'
+     */
+    for (i = 0; i < 5; ++i) {
+        ListMgr_FreeAttrs(&attrs);
+        ATTR_SET_INIT_ST(&attrs);
+        ATTR_MASK_SET(&attrs, size);
+        ATTR_MASK_STATUS_SET(&attrs, sm_lhsm->smi_index);
+        ATTR_MASK_SET(&attrs, path_update);
+        ATTR_MASK_SET(&attrs, fullpath);
+
+        rc = ListMgr_Get(&mgr, &first_free_fid, &attrs);
+        if (rc != 2) {
+            rc = -1;
+            goto done;
+        }
+    }
+
+    /*
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=8,
+     * last_access=1475834490, last_mod=1475834490, type='file', mode=420,
+     * nlink=1, md_update=1475834650, fileclass='++', class_update=1475834650
+     * WHERE id='0x200000401:0x2:0x0'
+     */
+    ListMgr_FreeAttrs(&attrs);
+    ATTR_MASK_SET(&attrs, owner);
+    ATTR_MASK_SET(&attrs, gr_name);
+    ATTR_MASK_SET(&attrs, blocks);
+    ATTR_MASK_SET(&attrs, last_access);
+    ATTR_MASK_SET(&attrs, last_mod);
+    ATTR_MASK_SET(&attrs, type);
+    ATTR_MASK_SET(&attrs, mode);
+    ATTR_MASK_SET(&attrs, nlink);
+    ATTR_MASK_SET(&attrs, md_update);
+    ATTR_MASK_SET(&attrs, fileclass);
+    ATTR_MASK_SET(&attrs, class_update);
+
+    strcpy(ATTR(&attrs, owner), "2000");
+    strcpy(ATTR(&attrs, gr_name), "root");
+    ATTR(&attrs, blocks) = 0;
+    ATTR(&attrs, last_access) = time(NULL);
+    ATTR(&attrs, last_mod) =
+        ATTR(&attrs, last_access) + 1;
+    strcpy(ATTR(&attrs, type), "file");
+    ATTR(&attrs, mode) = 420;
+    ATTR(&attrs, nlink) = 1;
+    ATTR(&attrs, md_update) =
+        ATTR(&attrs, last_access) + 2;
+    strcpy(ATTR(&attrs, fileclass),
+           "system_test_file_class");
+    ATTR(&attrs, class_update) =
+        ATTR(&attrs, last_access) + 3;
+
+    rc = ListMgr_Update(&mgr, data, &attrs);
+    if (rc != 0)
+        goto done;
+
+    /*
+     * INSERT INTO STRIPE_INFO (id, validator, stripe_count, stripe_size,
+     * pool_name) VALUES ('0x200000401:0x2:0x0', 2, 1, 1048576, '') ON DUPLICATE
+     * KEY UPDATE validator=VALUES(validator),
+     * stripe_count=VALUES(stripe_count), stripe_size=VALUES(stripe_size),
+     * pool_name=VALUES(pool_name)
+     *
+     * DELETE FROM STRIPE_ITEMS WHERE id='0x200000401:0x2:0x0'
+     *
+     * INSERT INTO STRIPE_ITEMS (id, stripe_index, ostidx, details) VALUES
+     * ('0x200000401:0x2:0x0', 0, 0,
+     * x'0000000002000000000000000000000000000000')
+     */
+    stripe_info.validator = 1;
+    stripe_info.stripe_count = 1;
+    stripe_info.stripe_size = 1048576;
+    stripe_info.pool_name[0] = '\000'; /* Empty */
+    stripe_items.count = 1;
+    stripe_items.stripe = &stripe_item;
+    stripe_item.ost_idx = 0;
+    stripe_item.ost_gen = 0;
+    stripe_item.obj_id = 2;
+    stripe_item.obj_seq = 0;
+    rc = ListMgr_SetStripe(&mgr, data, &stripe_info, &stripe_items);
+    if (rc != 0)
+        goto done;
+
+    /* About real FID.
+     * SELECT size, lhsm_status, path_update, this_path(parent_id, name) FROM
+     * ENTRIES LEFT JOIN NAMES ON ENTRIES.id=NAMES.id WHERE
+     * ENTRIES.id='0x200000401:0x2:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->first, size);
+    ATTR_MASK_STATUS_SET(&attr_sets->first, sm_lhsm->smi_index);
+    ATTR_MASK_SET(&attr_sets->first, path_update);
+    ATTR_MASK_SET(&attr_sets->first, fullpath);
+
+    rc = ListMgr_Get(&mgr, data, &attr_sets->first);
+    if (rc != 0)
+        goto done;
+
+    /* About real FID.
+     * UPDATE ENTRIES SET owner='root', gr_name='root', blocks=8,
+     * last_access=1475834490, last_mod=1475834490, type='file', mode=420,
+     * nlink=1, md_update=1475834650, fileclass='++', class_update=1475834650,
+     * lhsm_status='synchro', lhsm_lstrst=1475834641 WHERE
+     * id='0x200000401:0x2:0x0'
+     */
+    ATTR_MASK_SET(&attr_sets->second, owner);
+    ATTR_MASK_SET(&attr_sets->second, gr_name);
+    ATTR_MASK_SET(&attr_sets->second, blocks);
+    ATTR_MASK_SET(&attr_sets->second, last_access);
+    ATTR_MASK_SET(&attr_sets->second, last_mod);
+    ATTR_MASK_SET(&attr_sets->second, type);
+    ATTR_MASK_SET(&attr_sets->second, mode);
+    ATTR_MASK_SET(&attr_sets->second, nlink);
+    ATTR_MASK_SET(&attr_sets->second, md_update);
+    ATTR_MASK_SET(&attr_sets->second, fileclass);
+    ATTR_MASK_SET(&attr_sets->second, class_update);
+    ATTR_MASK_STATUS_SET(&attr_sets->second, sm_lhsm->smi_index);
+    ATTR_MASK_INFO_SET(&attr_sets->second, sm_lhsm, ATTR_LAST_RESTORE);
+
+    strcpy(ATTR(&attr_sets->second, owner), "2000");
+    strcpy(ATTR(&attr_sets->second, gr_name), "root");
+    ATTR(&attr_sets->second, blocks) = 0;
+    ATTR(&attr_sets->second, last_access) = time(NULL);
+    ATTR(&attr_sets->second, last_mod) =
+        ATTR(&attr_sets->second, last_access) + 1;
+    strcpy(ATTR(&attr_sets->second, type), "file");
+    ATTR(&attr_sets->second, mode) = 420;
+    ATTR(&attr_sets->second, nlink) = 1;
+    ATTR(&attr_sets->second, md_update) =
+        ATTR(&attr_sets->second, last_access) + 2;
+    strcpy(ATTR(&attr_sets->second, fileclass),
+           "system_test_file_class");
+    ATTR(&attr_sets->second, class_update) =
+        ATTR(&attr_sets->second, last_access) + 3;
+    sm_status_ensure_alloc(&attr_sets->second.attr_values.sm_status);
+    sm_info_ensure_alloc(&attr_sets->second.attr_values.sm_info);
+    /* The next line uses direct literal - as in 'lhsm' status manager. */
+    STATUS_ATTR(&attr_sets->second, sm_lhsm->smi_index) = "synchro";
+    SMI_INFO(&attr_sets->second, sm_lhsm, ATTR_LAST_RESTORE) =
+        MemAlloc(sizeof(int));
+    *(int*)SMI_INFO(&attr_sets->second, sm_lhsm, ATTR_LAST_RESTORE) =
+        ATTR(&attr_sets->second, last_access) + 4;
+
+    rc = ListMgr_Update(&mgr, data, &attr_sets->second);
+
 done:
     if (result == NULL) {
         ListMgr_FreeAttrs(&attr_sets->first);

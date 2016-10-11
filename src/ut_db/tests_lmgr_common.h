@@ -86,6 +86,7 @@ struct st_test_info {
 int chmod_test(void *data, void **result);
 int lhsm_archive_test(void *data, void**result);
 int lhsm_release_test(void *data, void**result);
+int lhsm_restore_test(void *data, void**result);
 int mkdir_test(void *data, void **result);
 int rmdir_test(void *data, void **result);
 
@@ -107,7 +108,7 @@ int mkdir_test_init(void);
 int rmdir_test_init(void);
 void *get_next_dir_data(void);
 
-int lhsm_release_test_init(void);
+int lhsm_release_restore_tests_init(void);
 
 #define LHSM_SMI smi_by_name("lhsm")
 
