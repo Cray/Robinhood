@@ -157,8 +157,10 @@ int listmgr_remove_no_tx(lmgr_t *p_mgr, const entry_id_t *p_id,
         }
         db_escape_string(&p_mgr->conn, escaped, len, ATTR(p_attr_set, name));
 
-        g_string_printf(req, "DELETE FROM "DNAMES_TABLE" WHERE pkn="HNAME_FMT" AND id="DPK,
-                        ppk, escaped, pk);
+        g_string_printf(req, "DELETE FROM "DNAMES_TABLE" WHERE ");
+        if (!last)
+            g_string_append_printf(req, "pkn="HNAME_FMT" AND ", ppk, escaped);
+        g_string_append_printf(req, "id="DPK, pk);
         MemFree(escaped);
 
         rc = db_exec_sql(&p_mgr->conn, req->str, NULL);
