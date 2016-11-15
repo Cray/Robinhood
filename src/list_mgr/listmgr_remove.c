@@ -36,7 +36,7 @@ static int clean_names(lmgr_t *p_mgr, const lmgr_filter_t *p_filter,
     GString *req;
 
     req = g_string_new("DELETE FROM "DNAMES_TABLE" WHERE ");
-    *nb_filter_names = filter2str(p_mgr, req, p_filter, T_DNAMES, false, false);
+    *nb_filter_names = filter2str(p_mgr, req, p_filter, T_DNAMES, 0);
 
     if (*nb_filter_names == 0)
         goto out;
@@ -168,7 +168,13 @@ int listmgr_remove_no_tx(lmgr_t *p_mgr, const entry_id_t *p_id,
             return rc;
     }
     else if (!p_attr_set || !ATTR_MASK_TEST(p_attr_set, parent_id) || !ATTR_MASK_TEST(p_attr_set, name))
-        DisplayLog(LVL_MAJOR, LISTMGR_TAG, "WARNING: missing attribute to delete entry from "DNAMES_TABLE);
+    {
+        DisplayLog(LVL_MAJOR, LISTMGR_TAG, "WARNING: missing attribute(s) to "
+                    "delete entry from "DNAMES_TABLE":%s%s%s",
+                    !p_attr_set ? " attrs=NULL" : "",
+                    p_attr_set && !ATTR_MASK_TEST(p_attr_set, parent_id) ? " parent" : "",
+                    p_attr_set && !ATTR_MASK_TEST(p_attr_set, name) ? " name" : "");
+    }
 
 out:
     g_string_free(req, TRUE);
@@ -227,11 +233,11 @@ static int listmgr_softrm_all(lmgr_t *p_mgr, time_t rm_time)
     attr_mask_unset_index(&mask_tmp, ATTR_INDEX_fullpath);
 
     req = g_string_new("INSERT IGNORE INTO " SOFT_RM_TABLE "(id,fullpath");
-    attrmask2fieldlist(req, mask_tmp, T_SOFTRM, true,  false, "","");
+    attrmask2fieldlist(req, mask_tmp, T_SOFTRM, "", "", AOF_LEADING_SEP);
 
     annex_fields = g_string_new(NULL);
-    attrmask2fieldlist(annex_fields, softrm_attr_set, T_ANNEX, true,  false,
-                       ANNEX_TABLE".", "");
+    attrmask2fieldlist(annex_fields, softrm_attr_set, T_ANNEX,
+                       ANNEX_TABLE".", "", AOF_LEADING_SEP);
     rc = db_exec_sql(&p_mgr->conn, req->str, NULL);
 
     g_string_free(annex_fields, TRUE);
@@ -334,13 +340,13 @@ static int listmgr_softrm_single(lmgr_t *p_mgr, const entry_id_t *p_id,
         req = g_string_new("INSERT IGNORE INTO " SOFT_RM_TABLE "(id");
 
     tmp_mask = attr_mask_and(&softrm_attr_set, &p_old_attrs->attr_mask);
-    attrmask2fieldlist(req, tmp_mask, T_SOFTRM, true,  false, "","");
+    attrmask2fieldlist(req, tmp_mask, T_SOFTRM, "", "", AOF_LEADING_SEP);
     g_string_append(req, ") VALUES (");
 
     entry_id2pk(p_id, PTR_PK(pk));
     g_string_append_printf(req, DPK, pk);
 
-    attrset2valuelist(p_mgr, req, p_old_attrs, T_SOFTRM, true);
+    attrset2valuelist(p_mgr, req, p_old_attrs, T_SOFTRM, AOF_LEADING_SEP);
     g_string_append(req, ")");
 
     if (ATTR_MASK_TEST(p_old_attrs, fullpath))
@@ -402,9 +408,12 @@ static int create_tmp_table_rm(lmgr_t *p_mgr, const lmgr_filter_t *p_filter,
                  */
 
                 g_string_append(req,"SELECT "MAIN_TABLE".id");
-                attrmask2fieldlist(req, softrm_attr_set, T_MAIN, true,  false, MAIN_TABLE".", "");
-                attrmask2fieldlist(req, softrm_attr_set, T_ANNEX, true,  false, ANNEX_TABLE".", "");
-                attrmask2fieldlist(req, softrm_attr_set, T_DNAMES, true,  false, DNAMES_TABLE".", "");
+                attrmask2fieldlist(req, softrm_attr_set, T_MAIN,
+                                   MAIN_TABLE".", "", AOF_LEADING_SEP);
+                attrmask2fieldlist(req, softrm_attr_set, T_ANNEX,
+                                   ANNEX_TABLE".", "", AOF_LEADING_SEP);
+                attrmask2fieldlist(req, softrm_attr_set, T_DNAMES,
+                                   DNAMES_TABLE".", "", AOF_LEADING_SEP);
                 g_string_append_printf(req, ",SUM(%s) AS rmcnt,COUNT(*) AS tot FROM "MAIN_TABLE
                                        " LEFT JOIN "DNAMES_TABLE" ON "MAIN_TABLE".id="DNAMES_TABLE".id"
                                        " LEFT JOIN "ANNEX_TABLE" ON "MAIN_TABLE".id="ANNEX_TABLE".id"
@@ -415,8 +424,10 @@ static int create_tmp_table_rm(lmgr_t *p_mgr, const lmgr_filter_t *p_filter,
         else /* full scan */
         {
             g_string_append(req,"SELECT "MAIN_TABLE".id," ONE_PATH_FUNC"("MAIN_TABLE".id) AS fullpath");
-            attrmask2fieldlist(req, softrm_attr_set, T_MAIN, true,  false, MAIN_TABLE".", "");
-            attrmask2fieldlist(req, softrm_attr_set, T_ANNEX, true,  false, ANNEX_TABLE".", "");
+            attrmask2fieldlist(req, softrm_attr_set, T_MAIN,
+                               MAIN_TABLE".", "", AOF_LEADING_SEP);
+            attrmask2fieldlist(req, softrm_attr_set, T_ANNEX,
+                               ANNEX_TABLE".", "", AOF_LEADING_SEP);
 
             g_string_append_printf(req, " FROM "MAIN_TABLE
                                    " LEFT JOIN "ANNEX_TABLE" ON "MAIN_TABLE".id="ANNEX_TABLE".id"
@@ -511,14 +522,14 @@ static int listmgr_mass_remove_no_tx(lmgr_t *p_mgr, const lmgr_filter_t *p_filte
     {
         filter_names = g_string_new(NULL);
         /* soft rm: just build the name filter for the later request */
-        counts.nb_names = filter2str(p_mgr, filter_names, p_filter, T_DNAMES, false, false);
+        counts.nb_names = filter2str(p_mgr, filter_names, p_filter, T_DNAMES, 0);
     }
 
     from = g_string_new(NULL);
     where = g_string_new(NULL);
 
     /* build the where clause */
-    if (filter_where(p_mgr, p_filter, &counts, true, false, where) == 0)
+    if (filter_where(p_mgr, p_filter, &counts, where, AOF_SKIP_NAME) == 0)
     {
         if (unlikely(counts.nb_names == 0))
         {
@@ -539,7 +550,7 @@ static int listmgr_mass_remove_no_tx(lmgr_t *p_mgr, const lmgr_filter_t *p_filte
     }
 
     /* build the from clause */
-    filter_from(p_mgr, &counts, true, from, false, &query_tab, &distinct);
+    filter_from(p_mgr, &counts, from, &query_tab, &distinct, AOF_SKIP_NAME);
 
     /* sanity check */
     if (unlikely(query_tab == T_NONE || GSTRING_EMPTY(from)))
@@ -589,7 +600,8 @@ static int listmgr_mass_remove_no_tx(lmgr_t *p_mgr, const lmgr_filter_t *p_filte
     if (soft_rm)
     {
         g_string_assign(req, "SELECT id");
-        nb += attrmask2fieldlist(req, mask_no_rmtime, T_TMP_SOFTRM, true, false, "","");
+        nb += attrmask2fieldlist(req, mask_no_rmtime, T_TMP_SOFTRM,
+                                 "", "", AOF_LEADING_SEP);
         g_string_append_printf(req, " FROM %s", tmp_table_name);
     }
     else
@@ -837,7 +849,8 @@ struct lmgr_rm_list_t *ListMgr_RmList(lmgr_t *p_mgr, lmgr_filter_t *p_filter,
         return NULL;
 
     req = g_string_new("SELECT id");
-    nb = attrmask2fieldlist(req, softrm_attr_set, T_SOFTRM, true, false, "", "");
+    nb = attrmask2fieldlist(req, softrm_attr_set, T_SOFTRM,
+                            "", "", AOF_LEADING_SEP);
     g_string_append(req, " FROM "SOFT_RM_TABLE);
 
     if (p_filter)
@@ -858,7 +871,7 @@ struct lmgr_rm_list_t *ListMgr_RmList(lmgr_t *p_mgr, lmgr_filter_t *p_filter,
             goto free_err;
         }
         g_string_append(req, " WHERE ");
-        if (filter2str(p_mgr, req, p_filter, T_SOFTRM, false, false) <= 0)
+        if (filter2str(p_mgr, req, p_filter, T_SOFTRM, 0) <= 0)
         {
             DisplayLog(LVL_CRIT, LISTMGR_TAG, "Error converting filter to SQL request");
             goto free_err;
@@ -974,7 +987,7 @@ int     ListMgr_GetRmEntry(lmgr_t * p_mgr,
     p_attrs->attr_mask = attr_mask_and(&p_attrs->attr_mask, &softrm_attr_set);
 
     req = g_string_new("SELECT ");
-    nb = attrmask2fieldlist(req, p_attrs->attr_mask, T_SOFTRM, 0, 0, 0, 0);
+    nb = attrmask2fieldlist(req, p_attrs->attr_mask, T_SOFTRM, NULL, NULL, 0);
     g_string_append_printf(req, " FROM "SOFT_RM_TABLE" WHERE id='"DFID_NOBRACE"'",
                            PFID(p_id));
 

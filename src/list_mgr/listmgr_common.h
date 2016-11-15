@@ -2,7 +2,7 @@
  * vim:expandtab:shiftwidth=4:tabstop=4:
  */
 /*
- * Copyright (C) 2008, 2009 CEA/DAM
+ * Copyright (C) 2008-2016 CEA/DAM
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the CeCILL License.
@@ -19,136 +19,140 @@
 #include "database.h"
 #include "status_manager.h"
 #include "rbh_logs.h"
+#include "rbh_misc.h"
 #include <stdint.h>
 #include <glib.h>
 
-#define ASSIGN_UNION( _u, _type, _address ) do {            \
-                    switch( _type )                         \
-                    {                                       \
-                      case DB_ID:                           \
-                        _u.val_id = *((entry_id_t*)(_address)); \
-                        break;                              \
-                      case DB_ENUM_FTYPE:                   \
-                      case DB_TEXT:                         \
-                        _u.val_str = (char*)(_address);     \
-                        break;                              \
-                      case DB_INT:                          \
-                        _u.val_int = *((int*)(_address));   \
-                        break;                              \
-                      case DB_UINT:                         \
-                        _u.val_uint = *((unsigned int*)(_address));   \
-                        break;                              \
-                      case DB_SHORT:                        \
-                        _u.val_short = *((short*)(_address));   \
-                        break;                              \
-                      case DB_USHORT:                         \
-                        _u.val_ushort = *((unsigned short*)(_address));  \
-                        break;                              \
-                      case DB_BIGINT:                       \
-                        _u.val_bigint = *((long long*)(_address));   \
-                        break;                              \
-                      case DB_BIGUINT:                      \
-                        _u.val_biguint = *((unsigned long long*)(_address));  \
-                        break;                              \
-                      case DB_BOOL:                         \
-                        _u.val_bool = *((bool*)(_address));   \
-                        break;                              \
-                      default:                              \
-                        DisplayLog( LVL_CRIT, LISTMGR_TAG, "Unexpected type in ASSIGN_UNION: %d !!!", _type);\
-                    }\
-                    } while(0)
+static inline void assign_union(db_type_u * const tgt, db_type_e type,
+                                const void *src)
+{
+    switch(type)
+    {
+    case DB_ID:
+        tgt->val_id = *((entry_id_t*)(src));
+        break;
+    case DB_ENUM_FTYPE:
+    case DB_TEXT:
+        tgt->val_str = (char*)(src);
+        break;
+    case DB_UIDGID:
+        if (global_config.uid_gid_as_numbers)
+            tgt->val_int = ((uidgid_u *)(src))->num;
+        else
+            tgt->val_str = ((uidgid_u *)(src))->txt;
+        break;
+    case DB_INT:
+        tgt->val_int = *((int*)(src));
+        break;
+    case DB_UINT:
+        tgt->val_uint = *((unsigned int*)(src));
+        break;
+    case DB_SHORT:
+        tgt->val_short = *((short*)(src));
+        break;
+    case DB_USHORT:
+        tgt->val_ushort = *((unsigned short*)(src));
+        break;
+    case DB_BIGINT:
+        tgt->val_bigint = *((long long*)(src));
+        break;
+    case DB_BIGUINT:
+        tgt->val_biguint = *((unsigned long long*)(src));
+        break;
+    case DB_BOOL:
+        tgt->val_bool = *((bool*)(src));
+        break;
+    case DB_STRIPE_INFO:
+    case DB_STRIPE_ITEMS:
+        RBH_BUG("Unsupported DB type");
+        break;
+    }
+}
 
-#define UNION_GET_VALUE( _u, _type, _address ) do {            \
-                    switch( _type )                         \
-                    {                                       \
-                      case DB_ID:                           \
-                        *((entry_id_t*)(_address)) = _u.val_id; \
-                        break;                              \
-                      case DB_ENUM_FTYPE:                   \
-                      case DB_TEXT:                         \
-                        strcpy( (char*)(_address), _u.val_str ); \
-                        break;                              \
-                      case DB_INT:                          \
-                        *((int*)(_address)) =  _u.val_int ;   \
-                        break;                              \
-                      case DB_UINT:                         \
-                        *((unsigned int*)(_address)) = _u.val_uint;   \
-                        break;                              \
-                      case DB_SHORT:                          \
-                        *((short*)(_address)) =  _u.val_short ;   \
-                        break;                              \
-                      case DB_USHORT:                       \
-                        *((unsigned short*)(_address)) = _u.val_ushort;   \
-                        break;                              \
-                      case DB_BIGINT:                       \
-                        *((long long*)(_address)) = _u.val_bigint ;   \
-                        break;                              \
-                      case DB_BIGUINT:                      \
-                        *((unsigned long long*)(_address)) = _u.val_biguint;  \
-                        break;                              \
-                      case DB_BOOL:                         \
-                        *((bool*)(_address)) = _u.val_bool ;   \
-                        break;                              \
-                      default:                              \
-                        DisplayLog( LVL_CRIT, LISTMGR_TAG, "Unexpected type in UNION_GET_VALUE: %d !!!", _type);\
-                    }\
-                    } while(0)
+static inline void union_get_value(void *tgt, db_type_e type,
+                                   const db_type_u *src)
+{
+    switch(type)
+    {
+    case DB_ID:
+        *((entry_id_t*)tgt) = src->val_id;
+        break;
+    case DB_TEXT:
+    case DB_ENUM_FTYPE:
+        strcpy((char*)tgt, src->val_str);
+        break;
+    case DB_UIDGID:
+        if (global_config.uid_gid_as_numbers)
+            ((uidgid_u *)tgt)->num = src->val_int;
+        else
+            strcpy(((uidgid_u *)tgt)->txt, src->val_str);
+        break;
+    case DB_INT:
+        *((int*)tgt) =  src->val_int ;
+        break;
+    case DB_UINT:
+        *((unsigned int*)tgt) = src->val_uint;
+        break;
+    case DB_SHORT:
+        *((short*)tgt) =  src->val_short ;
+        break;
+    case DB_USHORT:
+        *((unsigned short*)tgt) = src->val_ushort;
+        break;
+    case DB_BIGINT:
+        *((long long*)tgt) = src->val_bigint ;
+        break;
+    case DB_BIGUINT:
+        *((unsigned long long*)tgt) = src->val_biguint;
+        break;
+    case DB_BOOL:
+        *((bool*)tgt) = src->val_bool ;
+        break;
+    case DB_STRIPE_INFO:
+    case DB_STRIPE_ITEMS:
+          RBH_BUG("Unsupported DB type");
+          break;
+    }
+}
 
-
-#define DIFF_UNION( _diff, _type, _address1, _address2 ) do { \
-                    db_type_u _u1, _u2;                     \
-                    switch( _type )                         \
-                    {                                       \
-                      case DB_ID:                           \
-                        _u1.val_id = *((entry_id_t*)(_address1)); \
-                        _u2.val_id = *((entry_id_t*)(_address2)); \
-                        _diff = !entry_id_equal( &_u1.val_id, &_u2.val_id); \
-                        break;                              \
-                      case DB_ENUM_FTYPE:                   \
-                      case DB_TEXT:                         \
-                        _u1.val_str = (char*)(_address1);   \
-                        _u2.val_str = (char*)(_address2);   \
-                        _diff = strcmp(_u1.val_str, _u2.val_str); \
-                        break;                              \
-                      case DB_INT:                          \
-                        _u1.val_int = *((int*)(_address1));   \
-                        _u2.val_int = *((int*)(_address2));   \
-                        _diff = (_u1.val_int != _u2.val_int); \
-                        break;                              \
-                      case DB_UINT:                         \
-                        _u1.val_uint = *((unsigned int*)(_address1)); \
-                        _u2.val_uint = *((unsigned int*)(_address2)); \
-                        _diff = (_u1.val_uint != _u2.val_uint); \
-                        break;                              \
-                      case DB_SHORT:                          \
-                        _u1.val_short = *((short*)(_address1));   \
-                        _u2.val_short = *((short*)(_address2));   \
-                        _diff = (_u1.val_short != _u2.val_short); \
-                        break;                               \
-                      case DB_USHORT:                        \
-                        _u1.val_ushort = *((unsigned short*)(_address1)); \
-                        _u2.val_ushort = *((unsigned short*)(_address2)); \
-                        _diff = (_u1.val_ushort != _u2.val_ushort); \
-                        break;                              \
-                      case DB_BIGINT:                       \
-                        _u1.val_bigint = *((long long*)(_address1));   \
-                        _u2.val_bigint = *((long long*)(_address2));   \
-                        _diff = (_u1.val_bigint != _u2.val_bigint); \
-                        break;                              \
-                      case DB_BIGUINT:                      \
-                        _u1.val_biguint = *((unsigned long long*)(_address1));  \
-                        _u2.val_biguint = *((unsigned long long*)(_address2));  \
-                        _diff = (_u1.val_biguint != _u2.val_biguint); \
-                        break;                              \
-                      case DB_BOOL:                         \
-                        _u1.val_bool = *((bool*)(_address1));   \
-                        _u2.val_bool = *((bool*)(_address2));   \
-                        _diff = (_u1.val_bool != _u2.val_bool); \
-                        break;                              \
-                      default:                              \
-                        DisplayLog( LVL_CRIT, LISTMGR_TAG, "Unexpected type in ASSIGN_UNION: %d !!!", _type);\
-                    }\
-                    } while(0)
+static inline int diff_union(db_type_e type, const void *addr1, const void *addr2)
+{
+    switch(type)
+    {
+    case DB_ID:
+        return !entry_id_equal((const entry_id_t*)addr1,
+                               (const entry_id_t*)addr2);
+    case DB_ENUM_FTYPE:
+    case DB_TEXT:
+        return strcmp((const char *)addr1, (const char *)addr2);
+    case DB_UIDGID:
+        if (global_config.uid_gid_as_numbers)
+            return ((const uidgid_u *)addr1)->num
+                   != ((const uidgid_u *)addr2)->num;
+        else
+            return strcmp(((const uidgid_u *)addr1)->txt,
+                          ((const uidgid_u *)addr2)->txt);
+    case DB_INT:
+        return (*((const int*)addr1) != *((const int*)addr2));
+    case DB_UINT:
+        return (*((const unsigned int*)addr1) != *((const unsigned int*)addr2));
+    case DB_SHORT:
+        return (*((const short*)addr1) != *((const short*)addr2));
+    case DB_USHORT:
+        return (*((const unsigned short*)addr1) != *((const unsigned short*)addr2));
+    case DB_BIGINT:
+        return (*((const long long*)addr1) != *((const long long*)addr2));
+    case DB_BIGUINT:
+        return (*((const ull_t*)addr1) != *((const ull_t*)addr2));
+    case DB_BOOL:
+        return (*((const bool*)addr1) != *((const bool*)addr2));
+    case DB_STRIPE_INFO:
+    case DB_STRIPE_ITEMS:
+          RBH_BUG("Unsupported DB type");
+          break;
+    }
+    UNREACHED();
+}
 
 /** duplicate a value of the given C type */
 #define TYPE_DUP(_t, _tgt, _src) do {        \
@@ -161,7 +165,7 @@
     } while(0)
 
 /** duplicate a value of the given DB type */
-static inline void *dup_value(db_type_t db_type, db_type_u uval)
+static inline void *dup_value(db_type_e db_type, db_type_u uval)
 {
     void *ptr = NULL;
 
@@ -172,7 +176,14 @@ static inline void *dup_value(db_type_t db_type, db_type_u uval)
             break;
         case DB_ENUM_FTYPE:
         case DB_TEXT:
-            ptr = (void *)strdup(uval.val_str);
+            ptr = strdup(uval.val_str);
+            break;
+        case DB_UIDGID:
+            TYPE_DUP(uidgid_u, ptr, uval.val_str);
+            ptr = calloc(1, sizeof(uidgid_u));
+            if (ptr == NULL)
+                return NULL;
+            snprintf(((uidgid_u *)ptr)->txt, member_size(uidgid_u, txt), "%s", uval.val_str);
             break;
         case DB_INT:
             TYPE_DUP(int, ptr, &uval.val_int);
@@ -195,9 +206,10 @@ static inline void *dup_value(db_type_t db_type, db_type_u uval)
         case DB_BOOL:
             TYPE_DUP(bool, ptr, &uval.val_bool);
         break;
-        default:                              \
-            DisplayLog(LVL_CRIT, LISTMGR_TAG, "Unexpected type in %s: %d !!!",
-                       __func__, db_type);
+        case DB_STRIPE_INFO:
+        case DB_STRIPE_ITEMS:
+            RBH_BUG("Unsupported DB type");
+            break;
     }
     return ptr;
 }
@@ -398,20 +410,23 @@ static inline bool is_recov_field(unsigned int attr_index)
 }
 
 /** printing a value to a DB request */
-void printdbtype(lmgr_t *p_mgr, GString *str, db_type_t type, const db_type_u *value_ptr);
+void printdbtype(db_conn_t *pconn, GString *str, db_type_e type,
+                 const db_type_u *value_ptr);
 
 /** parse a value from DB */
-int  parsedbtype(char *instr, db_type_t type, db_type_u *value_out);
+int  parsedbtype(char *instr, db_type_e type, db_type_u *value_out);
 
 typedef enum
 {
     T_NONE = 0,                                  /* not set */
     T_MAIN,                                      /* fields in main table */
     T_DNAMES,                                    /* files in dir names table */
-    T_ANNEX,                                     /* fiels in annex table */
+    T_ANNEX,                                     /* fields in annex table */
     T_STRIPE_INFO,                               /* field in stripe info table */
     T_STRIPE_ITEMS,                              /* field in stripe items table */
     T_ACCT,                                      /* fields in accounting table */
+    T_ACCT_PK,                                   /* PK fields of ACCT table */
+    T_ACCT_VAL,                                  /* Other fileds of ACCT table */
     T_SOFTRM,                                    /* fields in softrm table (backup and HSM flavors only) */
     T_TMP_SOFTRM,                                /* temporary table for filling SOFTRM */
     T_RECOV                                      /* fields in recov table (HSM flavors only) */
@@ -427,7 +442,10 @@ static inline const char * table2name(table_enum table)
         case T_ANNEX: return ANNEX_TABLE;
         case T_STRIPE_INFO: return STRIPE_INFO_TABLE;
         case T_STRIPE_ITEMS: return STRIPE_ITEMS_TABLE;
-        case T_ACCT: return ACCT_TABLE;
+        case T_ACCT:
+        case T_ACCT_PK:
+        case T_ACCT_VAL:
+            return ACCT_TABLE;
         case T_SOFTRM: return SOFT_RM_TABLE;
         case T_TMP_SOFTRM: return "TMP_TABLE_*";
         case T_RECOV: return RECOV_TABLE;
@@ -437,7 +455,7 @@ static inline const char * table2name(table_enum table)
 
 typedef enum {
     ADD,
-    SUBSTRACT
+    SUBTRACT
 } operation_type;
 
 void           add_source_fields_for_gen(uint32_t *std_mask);
@@ -445,10 +463,17 @@ void           generate_fields( attr_set_t * p_set );
 
 int parse_entry_id(lmgr_t *p_mgr, const char *str, PK_PARG_T p_pk, entry_id_t *p_id);
 
+typedef enum {
+    AOF_LEADING_SEP = (1 << 0), /* add a separator at the beginning of the output */
+    AOF_GENERIC_VAL = (1 << 1), /* use field name in values (e.g. for a
+                                   "on duplicate key ..." statement) */
+    AOF_PREFIX      = (1 << 2), /* prefix field name with table name */
+    AOF_SKIP_NAME   = (1 << 3), /* skip name record */
+} attrset_op_flag_e;
+
 int            attrmask2fieldlist(GString *str, attr_mask_t attr_mask,
-                                  table_enum table, bool leading_comma,
-                                  bool for_update, const char *prefix,
-                                  const char *suffix);
+                                  table_enum table, const char *prefix,
+                                  const char *suffix, attrset_op_flag_e flags);
 
 int            attrmask2fieldcomparison(GString *str, attr_mask_t attr_mask,
                                   table_enum table, const char *left_prefix,
@@ -461,18 +486,18 @@ int            attrmask2fieldoperation(GString *str, attr_mask_t attr_mask,
 
 int            attrset2valuelist(lmgr_t *p_mgr, GString *str,
                                  const attr_set_t *p_set, table_enum table,
-                                 bool leading_coma);
+                                 attrset_op_flag_e flags);
 int            attrset2updatelist(lmgr_t * p_mgr, GString *str,
                                   const attr_set_t * p_set, table_enum table,
-                                  bool leading_coma, bool generic_value);
+                                  attrset_op_flag_e flags);
 
 char          *compar2str(filter_comparator_t compar);
 
 int            filter2str(lmgr_t *p_mgr, GString *str, const lmgr_filter_t *p_filter,
-                          table_enum table, bool leading_and, bool prefix_table);
+                          table_enum table, attrset_op_flag_e flags);
 
 int            func_filter(lmgr_t *p_mgr, GString *filter_str, const lmgr_filter_t *p_filter,
-                           table_enum table, bool leading_and, bool prefix_table);
+                           table_enum table, attrset_op_flag_e flags);
 
 struct field_count {
     unsigned int nb_main;
@@ -482,11 +507,12 @@ struct field_count {
     unsigned int nb_stripe_items;
 };
 int filter_where(lmgr_t *p_mgr, const lmgr_filter_t *p_filter,
-                 struct field_count *counts, bool ignore_name_filter,
-                 bool leading_and, GString *where);
+                 struct field_count *counts, GString *where,
+                 attrset_op_flag_e flags);
 void filter_from(lmgr_t *p_mgr, const struct field_count *counts,
-                 bool ignore_names_filter, GString *from, bool is_first_tab,
-                 table_enum *first_table, bool *select_distinct_id);
+                 GString *from, table_enum *first_table,
+                 bool *select_distinct_id,
+                 attrset_op_flag_e flags);
 
 /* return the number of filter tables */
 static inline unsigned int nb_field_tables(const struct field_count *counts)
@@ -578,9 +604,10 @@ void separated_db2list_inplace(char *list);
 
 static inline const char *field_name(unsigned int index)
 {
-    if (is_std_attr(index))
+    if (is_std_attr(index)) {
+        assert(index < ATTR_COUNT);
         return field_infos[index].field_name;
-    else if (is_status(index))
+    } else if (is_status(index))
         return get_sm_instance(attr2status_index(index))->db_field;
     else if (is_sm_info(index))
         return sm_attr_info[attr2sminfo_index(index)].db_attr_name;
@@ -588,11 +615,12 @@ static inline const char *field_name(unsigned int index)
         return NULL;
 }
 
-static inline db_type_t field_type(unsigned int index)
+static inline db_type_e field_type(unsigned int index)
 {
-    if (is_std_attr(index)) /* ensure index < ATTR_COUNT */
+    if (is_std_attr(index)) { /* ensure index < ATTR_COUNT */
+        assert(index < ATTR_COUNT);
         return field_infos[index].db_type;
-    else if (is_status(index))
+    } else if (is_status(index))
         return DB_TEXT;
     else if (is_sm_info(index))
         return sm_attr_info[attr2sminfo_index(index)].def->db_type;
@@ -609,5 +637,9 @@ static inline bool no_filter(const lmgr_filter_t *p_filter)
             ((p_filter->filter_type == FILTER_BOOLEXPR)
              && (p_filter->filter_boolexpr == NULL)));
 }
+
+bool match_table(table_enum t, unsigned int attr_index);
+
+int lmgr_table_count(db_conn_t *pconn, const char *table, uint64_t *count);
 
 #endif

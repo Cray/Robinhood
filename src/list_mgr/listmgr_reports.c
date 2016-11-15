@@ -28,7 +28,7 @@
 #include <inttypes.h>
 
 struct result {
-    db_type_t type;
+    db_type_e type;
     int       flags;
 };
 
@@ -80,7 +80,7 @@ static inline void append_filter_cond(GString *str, lmgr_t *p_mgr, const char *a
                            compar2str(desc->filter_compar));
 
     /** TODO support list filters (IN NOT and IN) */
-    printdbtype(p_mgr, str, res->type, &desc->filter_value.value);
+    printdbtype(&p_mgr->conn, str, res->type, &desc->filter_value.value);
 
     g_string_append(str, ")");
 }
@@ -473,9 +473,10 @@ struct lmgr_report_t *ListMgr_Report(lmgr_t *p_mgr,
                 g_string_append(fields, "SUM(size=0)");
 
                 for (i = 1; i < SZ_PROFIL_COUNT-1; i++)
-                    g_string_append_printf(fields, ",SUM("ACCT_SZ_VAL("size")"=%u)", i-1);
+                    g_string_append_printf(fields,
+                            ",SUM("SZRANGE_FUNC"(size)=%u)", i-1);
 
-                g_string_append_printf(fields, ",SUM("ACCT_SZ_VAL("size")">=%u)", SZ_PROFIL_COUNT-1);
+                g_string_append_printf(fields, ",SUM("SZRANGE_FUNC"(size)>=%u)", SZ_PROFIL_COUNT-1);
 
                 for (i = 0; i< SZ_PROFIL_COUNT; i++)
                     p_report->result[i+report_descr_count].type = DB_BIGUINT;
@@ -511,18 +512,20 @@ struct lmgr_report_t *ListMgr_Report(lmgr_t *p_mgr,
 
             /* filter on acct fields only */
             filter_acct = filter2str(p_mgr, where, p_filter, T_ACCT,
-                                     !GSTRING_EMPTY(where), true);
+                                     (!GSTRING_EMPTY(where) ? AOF_LEADING_SEP : 0)
+                                     | AOF_PREFIX);
             if (filter_acct > 0)
                 use_acct_table = true;
         }
         else
         {
-            /* process NAMES filters appart, as with must then join with DISTINCT(id) */
-            filter_where(p_mgr, p_filter, &fcnt, true, !GSTRING_EMPTY(where),
-                         where);
+            /* process NAMES filters apart, as with must then join with DISTINCT(id) */
+            filter_where(p_mgr, p_filter, &fcnt, where,
+                         (!GSTRING_EMPTY(where) ? AOF_LEADING_SEP : 0)
+                         | AOF_SKIP_NAME);
 
             filter_name = g_string_new(NULL);
-            fcnt.nb_names = filter2str(p_mgr, filter_name, p_filter, T_DNAMES, false, false);
+            fcnt.nb_names = filter2str(p_mgr, filter_name, p_filter, T_DNAMES, 0);
         }
     }
 
@@ -540,7 +543,7 @@ struct lmgr_report_t *ListMgr_Report(lmgr_t *p_mgr,
     {
         bool distinct;
 
-        filter_from(p_mgr, &fcnt, true, req, false, &query_tab, &distinct);
+        filter_from(p_mgr, &fcnt, req, &query_tab, &distinct, AOF_SKIP_NAME);
 
         if (filter_name != NULL && !GSTRING_EMPTY(filter_name))
         {
@@ -733,26 +736,11 @@ void ListMgr_CloseReport(struct lmgr_report_t *p_iter)
 
 int ListMgr_EntryCount(lmgr_t * p_mgr, uint64_t *count)
 {
-    int            rc;
-    result_handle_t result;
-    char          *str_count = NULL;
+    int rc;
 
-    /* execute the request */
-retry:
-    rc = db_exec_sql( &p_mgr->conn, "SELECT COUNT(*) FROM " MAIN_TABLE, &result );
-    if (lmgr_delayed_retry(p_mgr, rc))
-        goto retry;
-    else if (rc)
-        return rc;
+    do {
+        rc = lmgr_table_count(&p_mgr->conn, MAIN_TABLE, count);
+    } while (rc != DB_SUCCESS && lmgr_delayed_retry(p_mgr, rc));
 
-    rc = db_next_record( &p_mgr->conn, &result, &str_count, 1 );
-    if (rc)
-        return rc;
-
-    if ( sscanf( str_count, "%"SCNu64, count ) != 1 )
-        rc = DB_REQUEST_FAILED;
-
-    db_result_free( &p_mgr->conn, &result );
     return rc;
 }
-

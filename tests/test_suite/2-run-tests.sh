@@ -44,6 +44,20 @@ else
 fi
 
 export RBH_TEST_POLICIES="$(pwd)/test_policies.inc"
+export RBH_TEST_LAST_ACCESS_ONLY_ATIME=${RH_TEST_LAST_ACCESS_ONLY_ATIME:-no}
+export RBH_NUM_UIDGID=${RBH_NUM_UIDGID:-no}
+
+# Retrieve the testuser UID and testgroup GID, as we may need them
+# later
+if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+    testuser_str=$(getent passwd testuser | cut -d: -f3)
+    testgroup_str=$(getent group testgroup | cut -d: -f3)
+    root_str=0
+else
+    testuser_str=testuser
+    testgroup_str=testgroup
+    root_str=root
+fi
 
 XML="test_report.xml"
 TMPXML_PREFIX="/tmp/report.xml.$$"
@@ -158,7 +172,7 @@ fi
 function flush_data
 {
     if [[ -n "$SYNC" ]]; then
-      # if the agent is on the same node as the writter, we are not sure
+      # if the agent is on the same node as the writer, we are not sure
       # data has been flushed to OSTs
       echo "Flushing data to OSTs"
       sync
@@ -199,14 +213,14 @@ fi
 
 PROC=$CMD
 
-CLEAN="rh_chglogs.log rh_migr.log rh_rm.log rh.pid rh_purge.log rh_report.log rh_syntax.log recov.log rh_scan.log /tmp/rh_alert.log rh_rmdir.log"
+CLEAN="rh_chglogs.log rh_migr.log rh_rm.log rh.pid rh_purge.log rh_report.log rh_syntax.log recov.log rh_scan.log /tmp/rh_alert.log rh_rmdir.log rh.log"
 
 SUMMARY="/tmp/test_${PROC}_summary.$$"
 
 NB_ERROR=0
 RC=0
 SKIP=0
-SUCCES=0
+SUCCESS=0
 DO_SKIP=0
 
 function error_reset
@@ -327,7 +341,6 @@ function clean_fs
 
 	[ "$DEBUG" = "1" ] && echo "Destroying any running instance of robinhood..."
 	pkill robinhood
-	pkill rbh-lhsm
 
 	if [ -f rh.pid ]; then
 		echo "killing remaining robinhood process..."
@@ -335,7 +348,7 @@ function clean_fs
 		rm -f rh.pid
 	fi
 
-	sleep 1
+	pgrep -f robinhood && sleep 1 && pkill -9 -f robinhood
 	[ "$DEBUG" = "1" ] && echo "Cleaning robinhood's DB..."
 	$CFG_SCRIPT empty_db $RH_DB > /dev/null
 
@@ -343,7 +356,6 @@ function clean_fs
 	if (( $no_log==0 )); then
 	   $LFS changelog_clear lustre-MDT0000 cl1 0
 	fi
-
 }
 
 function ensure_init_backend()
@@ -469,7 +481,7 @@ function migration_test
     	check_db_error rh_chglogs.log
 
 	echo "3-Applying migration policy ($policy_str)..."
-	# start a migration files should notbe migrated this time
+	# start a migration files should not be migrated this time
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l DEBUG -L rh_migr.log || error ""
 
 	nb_migr=`grep "$ARCH_STR" rh_migr.log | wc -l`
@@ -513,6 +525,128 @@ function migration_test
         [ "$DEBUG" = "1" ] && cat report.out
         check_status_count report.out synchro $expected_migr
     fi
+
+    rm -f report.out
+}
+
+# Create a file with a UUID, archive it and delete. Make sure that its
+# UUID makes it to the ENTRIES table. Do the same test with a file
+# without UUID to test some bad paths.
+function archive_uuid1
+{
+    config_file=$1
+
+    if (( $is_lhsm == 0 )); then
+        echo "Lustre/HSM test only: skipped"
+        set_skipped
+        return 1
+    fi
+
+    clean_logs
+
+    echo "Initial scan of empty filesystem"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_chglogs.log  --once || error ""
+
+    # create 2 files
+    echo "1-Creating files..."
+    for i in a `seq 1 2`; do
+        rm -f $RH_ROOT/file.$i
+        dd if=/dev/zero of=$RH_ROOT/file.$i bs=1k count=1 >/dev/null 2>/dev/null || error "writing file.$i"
+    done
+
+    # Set a fake UUID only on the first file
+    local fake_uuid="8bc54fd0-5a7e-49f2-ad32-adc4147d31a2"
+    setfattr -n trusted.lhsm.uuid -v "$fake_uuid" $RH_ROOT/file.1
+    getfattr -n trusted.lhsm.uuid $RH_ROOT/file.1 || error "UUID wasn't set"
+
+    local fid1=$(get_id "$RH_ROOT/file.1")
+    local fid2=$(get_id "$RH_ROOT/file.2")
+
+    echo "2- scan filesystem"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_chglogs.log  --once || error ""
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $fid1 | egrep "lhsm\.uuid\s+:\s+$fake_uuid" || error "UUID not found in ENTRIES for file1"
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $fid2 | grep "lhsm\.uuid" && error "UUID found in ENTRIES for file2"
+
+    echo "3-Test rbh-find with UUID"
+    $FIND -f $RBH_CFG_DIR/$config_file -printf "%p %Rm{lhsm.uuid}\\n" | grep "$fake_uuid" || error "UUID not found by rbh-find for file1"
+
+    rm -f report.out
+}
+
+# Create a file with a UUID, archive it and delete. Make sure that its
+# UUID makes it to the ENTRIES and SOFT_RM tables. Do the same test
+# for a file without UUID to test some bad paths.
+function archive_uuid2
+{
+    config_file=$1
+
+    if (( $is_lhsm == 0 )); then
+        echo "Lustre/HSM test only: skipped"
+        set_skipped
+        return 1
+    fi
+
+    clean_logs
+
+    echo "Initial scan of empty filesystem"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_chglogs.log  --once || error ""
+
+    # create 2 files
+    echo "1-Creating files..."
+    for i in a `seq 1 2`; do
+        rm -f $RH_ROOT/file.$i
+        dd if=/dev/zero of=$RH_ROOT/file.$i bs=1k count=1 >/dev/null 2>/dev/null || error "writing file.$i"
+    done
+
+    # Set a fake UUID only on the first file
+    local fake_uuid="2363c3ed-5a7e-49f2-ad32-adc4147d31a2"
+    setfattr -n trusted.lhsm.uuid -v "$fake_uuid" $RH_ROOT/file.1
+    getfattr -n trusted.lhsm.uuid $RH_ROOT/file.1 || error "UUID wasn't set"
+
+    local fid1=$(get_id "$RH_ROOT/file.1")
+    local fid2=$(get_id "$RH_ROOT/file.2")
+
+    echo "2-Reading changelogs..."
+    $RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+    check_db_error rh_chglogs.log
+
+    echo "3-Archiving the files"
+    $LFS hsm_archive $RH_ROOT/file.1 || error "executing lfs hsm_archive"
+    $LFS hsm_archive $RH_ROOT/file.2 || error "executing lfs hsm_archive"
+
+    wait_hsm_state $RH_ROOT/file.1 0x00000009
+    wait_hsm_state $RH_ROOT/file.2 0x00000009
+
+    echo "4-Reading changelogs..."
+    $RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $fid1 | egrep "lhsm\.uuid\s+:\s+$fake_uuid" || error "UUID not found in ENTRIES for file1"
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $fid2 | grep "lhsm\.uuid" && error "UUID found in ENTRIES for file2"
+
+    echo "5-Test soft rm"
+    rm -f $RH_ROOT/file.1
+    rm -f $RH_ROOT/file.2
+
+    $RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+
+    mysql $RH_DB -e "SELECT lhsm_uuid FROM SOFT_RM WHERE id='$fid1'" | grep "$fake_uuid" || error "UUID not found in SOFT_RM for file1"
+    mysql $RH_DB -e "SELECT lhsm_uuid FROM SOFT_RM WHERE id='$fid2'" | grep "NULL" || error "UUID found in SOFT_RM for file2"
+
+    echo "6-Test undelete"
+    $UNDELETE -f $RBH_CFG_DIR/$config_file -L | grep 'file'
+    $UNDELETE -f $RBH_CFG_DIR/$config_file -R $RH_ROOT/file.1
+
+    $RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+
+    getfattr -n trusted.lhsm.uuid $RH_ROOT/file.1 || error "UUID wasn't set"
+    getfattr -n trusted.lhsm.uuid $RH_ROOT/file.1 | grep "$fake_uuid" || error "Bad UUID undeleted"
+
+    local fid1=$(get_id "$RH_ROOT/file.1")
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $fid1 | egrep "lhsm\.uuid\s+:\s+$fake_uuid" || error "UUID not found in ENTRIES for file1"
+    mysql $RH_DB -e "SELECT lhsm_uuid FROM SOFT_RM WHERE id='$fid2'" | grep "NULL" || error "UUID found in SOFT_RM for file2"
+
+    echo "7-Test rbh-find with UUID"
+    $FIND -f $RBH_CFG_DIR/$config_file -printf "%p %Rm{lhsm.uuid}\\n" | grep "$fake_uuid" || error "UUID not found by rbh-find for file1"
 
     rm -f report.out
 }
@@ -856,7 +990,7 @@ function test_lru_policy
     sleep 1
 
 	echo "3-Applying migration policy ($policy_str)..."
-	# start a migration files should notbe migrated this time
+	# start a migration files should not be migrated this time
 
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l FULL -L rh_migr.log   || error ""
     [ "$DEBUG" = "1" ] && grep "SELECT ENTRIES" rh_migr.log
@@ -1017,13 +1151,6 @@ function test_suspend_on_error
 
 	echo "3-Applying migration policy ($policy_str)..."
 
-    # make the archive fail
-	if (( $is_lhsm != 0 )); then
-        for i in $(seq 1 ${nb_files_error}); do
-            $LFS hsm_set --noarchive $RH_ROOT/file.$i.fail
-        done
-    fi
-
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --force --target=all -l DEBUG -L rh_migr.log   || error ""
 
     [ "$DEBUG" = "1" ] && grep action_params rh_migr.log
@@ -1082,7 +1209,7 @@ function xattr_test
     	check_db_error rh_chglogs.log
 
 	echo "3-Applying migration policy ($policy_str)..."
-	# start a migration files should notbe migrated this time
+	# start a migration files should not be migrated this time
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l DEBUG -L rh_migr.log   || error ""
 
 	nb_migr=`grep "$ARCH_STR" rh_migr.log | wc -l`
@@ -1270,7 +1397,7 @@ function test_hsm_remove
     if (( $is_lhsm != 0 )); then
         extra=1 # +1 for file.a
         extra_list=(a) # should be in softrm
-        extra_excl=(b) # shouldnt be in softrm
+        extra_excl=(b) # shouldn't be in softrm
         echo "Archiving $expected_rm files..."
         flush_data
         for i in $(seq 1 $expected_rm) a; do
@@ -1462,6 +1589,18 @@ function test_lhsm_remove
     fi
 }
 
+function populate
+{
+	local entries=$1
+	local i
+	for i in `seq 1 $entries`; do
+		((dir_c=$i % 10))
+		((subdir_c=$i % 100))
+		dir=$RH_ROOT/dir.$dir_c/subdir.$subdir_c
+		mkdir -p $dir || error "creating directory $dir"
+		echo "file.$i" > $dir/file.$i || error "creating file $dir/file.$i"
+	done
+}
 
 
 function mass_softrm
@@ -1481,13 +1620,7 @@ function mass_softrm
 
 	# populate filesystem
 	echo "1-Populating filesystem..."
-	for i in `seq 1 $entries`; do
-		((dir_c=$i % 10))
-		((subdir_c=$i % 100))
-		dir=$RH_ROOT/dir.$dir_c/subdir.$subdir_c
-		mkdir -p $dir || error "creating directory $dir"
-		echo "file.$i" > $dir/file.$i || error "creating file $dir/file.$i"
-	done
+	populate $entries
 
 	# how many subdirs in dir.1?
 	nbsubdirs=$( ls $RH_ROOT/dir.1 | grep subdir | wc -l )
@@ -1534,7 +1667,7 @@ function mass_softrm
         echo "4-Removing files in $RH_ROOT/dir.1..."
 	rm -rf "$RH_ROOT/dir.1" || error "removing files in $RH_ROOT/dir.1"
 
-	# at least 1 second must be enlapsed since last entry change (sync)
+	# at least 1 second must be elapsed since last entry change (sync)
 	sleep 1
 
 	echo "5-Update DB with a new scan..."
@@ -1658,7 +1791,7 @@ function test_custom_purge
     touch "$RH_ROOT/foo2 ; exit 1" || error "couldn't create file"
     touch "$RH_ROOT/foo3' ';' 'exit' '1'" || error "couldn't create file"
 
-	echo "Inital scan..."
+	echo "Initial scan..."
 	$RH -f $RBH_CFG_DIR/$config_file --scan --once -l DEBUG -L rh_scan.log
 	check_db_error rh_scan.log
 
@@ -2071,7 +2204,7 @@ function test_maint_mode
 		if grep "$ARCH_STR" rh_migr.log ; then
 			arch_done=1
 			now=`date +%s`
-			# delay_min must be enlapsed
+			# delay_min must be elapsed
 			(( $now >= $t0 + $delay_min )) || error "file migrated before dealy min"
 			# migr_policy_delay must not been reached
 			(( $now < $t0 + $migr_policy_delay )) || error "file already reached policy delay"
@@ -2122,10 +2255,10 @@ function test_rh_report
 	echo "3.Checking reports..."
 	for i in `seq 1 $dircount`; do
 	    # posix FS do some block preallocation, so we don't know the exact space used:
-    	# compare with 'du' return instead.
+    	# compare with 'du -b' instead.
         if [ -n "$POSIX_MODE" ]; then
-		    real=`du -B 512 -c $RH_ROOT/dir.$i/* | grep total | awk '{print $1}'`
-    		real=`echo "$real*512" | bc -l`
+		    real=`du -b -c $RH_ROOT/dir.$i/* | grep total | awk '{print $1}'`
+    		#real=`echo "$real*512" | bc -l`
         else
             real=$(($i*1024*1024))
         fi
@@ -2236,7 +2369,7 @@ function test_rh_report_split_user_group
 					sum_no_split_file=`egrep -e "^$user.*file.*" rh_report_no_split.log | awk -F ',' '{array[$1]+=$'$((j-1))'}END{for (name in array) {print array[name]}}'`
                                         if (( $sum_split_dir != $sum_no_split_dir || $sum_split_file != $sum_no_split_file )); then
 						error "Unexpected value: dircount=$sum_split_dir/$sum_no_split_dir, filecount: $sum_split_file/$sum_no_split_file"
-						echo "Splitted report: "
+						echo "Split report: "
 						cat rh_report_split.log
 						echo "Summed report: "
 						cat rh_report_no_split.log
@@ -2247,7 +2380,7 @@ function test_rh_report_split_user_group
                                         sum_no_split=`egrep -e "^$user" rh_report_no_split.log | awk -F ',' '{array[$1]+=$'$((j-1))'}END{for (name in array) {print array[name]}}'`
 					if (( $sum_split != $sum_no_split )); then
 						error "Unexpected value: filecount: $sum_split/$sum_no_split"
-						echo "Splitted report: "
+						echo "Split report: "
 						cat rh_report_split.log
 						echo "Summed report: "
 						cat rh_report_no_split.log
@@ -2310,6 +2443,134 @@ function test_acct_table
         fi
 }
 
+#test accounting with borderline cases (NULL fields, etc...)
+function test_acct_borderline
+{
+    config_file=$1
+    export ACCT_SWITCH=$2
+
+    :>rh.log
+
+    # create DB schema
+    $RH -f $RBH_CFG_DIR/$config_file --alter-db -L rh.log
+
+    # insert 2 records with NULL uid, gid, size...
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type) VALUES ('id1','file')" || error "INSERT ERROR"
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type) VALUES ('id2','file')" || error "INSERT ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 2 ]] || error "expected count: 2"
+    [[ "${line_values[4]}" == 0 ]] || error "expected size: 0"
+    [[ "${line_values[7]}" == 2 ]] || error "expected count for size0: 2"
+    [[ "${line_values[8]}" == 0 ]] || error "expected count for size1-31: 0"
+
+    # change size of this record (to sz32)
+    mysql $RH_DB -e "UPDATE ENTRIES SET size=123 WHERE id='id1'" || error "UPDATE ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 2 ]] || error "expected count: 2"
+    [[ "${line_values[4]}" == 123 ]] || error "expected size: 123"
+    [[ "${line_values[7]}" == 1 ]] || error "expected count for size0: 1"
+    [[ "${line_values[9]}" == 1 ]] || error "expected count for size32-1K: 1"
+
+    # change size of this record (to sz1M)
+    mysql $RH_DB -e "UPDATE ENTRIES SET size=2000000 WHERE id='id1'" || error "UPDATE ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 2 ]] || error "expected count: 2"
+    [[ "${line_values[4]}" == 2000000 ]] || error "expected size: 2000000"
+    [[ "${line_values[7]}" == 1 ]] || error "expected count for size0: 1"
+    [[ "${line_values[9]}" == 0 ]] || error "expected count for size32-1K: 0"
+    [[ "${line_values[12]}" == 1 ]] || error "expected count for size1M-32M: 1"
+
+    # change record owner
+    mysql $RH_DB -e "UPDATE ENTRIES SET uid='foo' WHERE id='id1'" || error "UPDATE ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    # only id2 remains with unknown uid/unknown gid
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 1 ]] || error "expected count: 1"
+    [[ "${line_values[4]}" == 0 ]] || error "expected size: 0"
+    [[ "${line_values[7]}" == 1 ]] || error "expected count for size0: 1"
+    [[ "${line_values[9]}" == 0 ]] || error "expected count for size32-1K: 0"
+    [[ "${line_values[12]}" == 0 ]] || error "expected count for size1M-32M: 0"
+
+    # only id1 is now foo/unknown gid
+    line_values=($(grep " foo,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 1 ]] || error "expected count: 1"
+    [[ "${line_values[4]}" == 2000000 ]] || error "expected size: 2000000"
+    [[ "${line_values[7]}" == 0 ]] || error "expected count for size0: 0"
+    [[ "${line_values[9]}" == 0 ]] || error "expected count for size32-1K: 0"
+    [[ "${line_values[12]}" == 1 ]] || error "expected count for size1M-32M: 1"
+    
+    # change record group
+    mysql $RH_DB -e "UPDATE ENTRIES SET gid='bar' WHERE id='id1'" || error "UPDATE ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    # only id1 is now foo/bar
+    line_values=($(grep " foo,        bar" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 1 ]] || error "expected count: 1"
+    [[ "${line_values[4]}" == 2000000 ]] || error "expected size: 2000000"
+    [[ "${line_values[7]}" == 0 ]] || error "expected count for size0: 0"
+    [[ "${line_values[9]}" == 0 ]] || error "expected count for size32-1K: 0"
+    [[ "${line_values[12]}" == 1 ]] || error "expected count for size1M-32M: 1"
+
+    # nothing remains as foo/unknown (no report line, or 0)
+    line_values=($(grep " foo,    unknown" rh_report.log | tr ',' ' '))
+    [ -z "$line_values" ] || [[ "${line_values[3]}" == 0 ]] || error "no entries expected for foo/unknown (${line_values[3]})"
+
+    # delete records
+    mysql $RH_DB -e "DELETE FROM ENTRIES WHERE id='id1'" || error "DELETE ERROR"
+    mysql $RH_DB -e "DELETE FROM ENTRIES WHERE id='id2'" || error "DELETE ERROR"
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    # nothing remains as foo/bar or unknown/unknown
+    line_values=($(grep " foo,        bar" rh_report.log | tr ',' ' '))
+    [ -z "$line_values" ] || [[ "${line_values[3]}" == 0 ]] || error "no entries expected for foo/bar (${line_values[3]})"
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [ -z "$line_values" ] || [[ "${line_values[3]}" == 0 ]] || error "no entries expected for unknown/unknown (${line_values[3]})"
+
+    # Add new records and check ACCT is correctly populated
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type) VALUES ('id3','file')" || error "INSERT ERROR"
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type) VALUES ('id4','file')" || error "INSERT ERROR"
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type, size) VALUES ('id5','file', 123)" || error "INSERT ERROR"
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type, uid, gid, size) VALUES ('id6','file','foo','bar', 456)" || error "INSERT ERROR"
+    mysql $RH_DB -e "INSERT INTO ENTRIES (id, type, uid, gid, size) VALUES ('id7','file','foo','bar', 123456)" || error "INSERT ERROR"
+    mysql $RH_DB -e "DROP TABLE ACCT_STAT" || error "DROP ERROR"
+
+    :>rh.log
+
+    $RH -f $RBH_CFG_DIR/$config_file --alter-db -L rh.log
+    # check if ACCT_STAT has been populated
+    grep "Populating accounting table" rh.log || error "ACCT_STAT should have been populated"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
+    [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
+
+    # check records 
+    line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 3 ]] || error "expected count: 3"
+    [[ "${line_values[4]}" == 123 ]] || error "expected size: 123"
+    [[ "${line_values[7]}" == 2 ]] || error "expected count for size0: 2"
+    [[ "${line_values[9]}" == 1 ]] || error "expected count for size32-1K: 1"
+
+    line_values=($(grep " foo,        bar" rh_report.log | tr ',' ' '))
+    [[ "${line_values[3]}" == 2 ]] || error "expected count: 2"
+    [[ "${line_values[4]}" == 123912 ]] || error "expected size: 123912"
+    [[ "${line_values[7]}" == 0 ]] || error "expected count for size0: 0"
+    [[ "${line_values[9]}" == 1 ]] || error "expected count for size32-1K: 1"
+    [[ "${line_values[11]}" == 1 ]] || error "expected count for size32K-1M: 1"
+}
+
 #test dircount reports
 function test_dircount_report
 {
@@ -2320,7 +2581,7 @@ function test_dircount_report
 
 	clean_logs
 
-	# inital scan
+	# initial scan
 	$RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_chglogs.log  --once 2>/dev/null || error "reading chglog"
 	check_db_error rh_chglogs.log
 
@@ -2437,7 +2698,11 @@ function    test_sort_report
     clean_logs
 
     # get 3 different users (from /etc/passwd)
-    users=( $(head -n 3 /etc/passwd | cut -d ':' -f 1) )
+    if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+        users=( $(head -n 3 /etc/passwd | cut -d ':' -f 3) )
+    else
+        users=( $(head -n 3 /etc/passwd | cut -d ':' -f 1) )
+    fi
 
     echo "1-Populating filesystem with test files..."
 
@@ -2520,7 +2785,7 @@ function    test_sort_report
     # only user 0 and 1 have 10 entries or more
     $REPORT -f $RBH_CFG_DIR/$config_file -l MAJOR --csv -q --top-user --count-min=10 > report.out || error "generating topuser with at least 10 entries"
     (( $(wc -l report.out | awk '{print$1}') == 2 )) || error "only 2 users expected with more than 10 entries"
-    grep ${users[2]} report.out && error "${users[2]} is not expected to have more than 10 entries"
+    egrep "^\s+[0-9]+,\s+${users[2]}," report.out && error "${users[2]} is not expected to have more than 10 entries"
 
     rm -f report.out
 }
@@ -2669,7 +2934,7 @@ function path_test
 
 
 	echo "3-Applying migration policy ($policy_str)..."
-	# start a migration files should notbe migrated this time
+	# start a migration files should not be migrated this time
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l DEBUG -L rh_migr.log   || error ""
 
 	# count the number of file for each policy
@@ -2755,7 +3020,7 @@ function update_test
 
 		(( $nb_getattr == $expect_attr )) || error "********** TEST FAILED: wrong count of getattr: $nb_getattr (t=$t), expected=$expect_attr"
 		# the path may be retrieved at the first loop (at creation)
-		# but not during the next loop (as long as enlapsed time < update_period)
+		# but not during the next loop (as long as elapsed time < update_period)
 		if (( $i > 1 )) && (( `date "+%s"` - $init < $update_period )); then
 			nb_getpath=`grep getpath=1 $LOG | wc -l`
 			grep "getpath=1" $LOG
@@ -2763,7 +3028,7 @@ function update_test
 			(( $nb_getpath == 0 )) || error "********** TEST FAILED: wrong count of getpath: $nb_getpath (t=$t), expected=0"
 		fi
 
-		# wait for 5s to be fully enlapsed
+		# wait for 5s to be fully elapsed
 		while (( `date "+%s"` - $start <= $event_updt_min )); do
 			usleep 100000
 		done
@@ -2799,7 +3064,7 @@ function update_test
 		(( $nb_getpath == 0 )) || error "********** TEST FAILED: wrong count of getpath: $nb_getpath"
 
 		# attributes may be retrieved at the first loop (at creation)
-		# but not during the next loop (as long as enlapsed time < update_period)
+		# but not during the next loop (as long as elapsed time < update_period)
 		if (( $i > 1 )) && (( `date "+%s"` - $init < $update_period )); then
 			nb_getattr=`grep getattr=1 $LOG | wc -l`
 			echo "nb attr update: $nb_getattr"
@@ -2840,7 +3105,7 @@ function update_test
 		(( $nb_getstatus == 1 )) || error "********** TEST FAILED: wrong count of getstatus: $nb_getstatus"
 	fi
 
-	# kill remaning event handler
+	# kill remaining event handler
 	sleep 1
 	pkill -9 $PROC
 }
@@ -3688,7 +3953,7 @@ function test_checker
     # default dataversion is mtime+size
     # use data_version with lustre 2.4+
     if [ $FS_TYPE = "lustre" ]; then
-        lfs help | grep -q data_version && export RBH_CKSUM_DV_CMD="lfs data_version"
+        $LFS help | grep -q data_version && export RBH_CKSUM_DV_CMD="lfs data_version"
     fi
 
     # create initial version of files
@@ -3698,6 +3963,12 @@ function test_checker
     $RH -f $RBH_CFG_DIR/$config_file --scan --once -l DEBUG -L rh_scan.log ||
         error "scan error"
     check_db_error rh_scan.log
+
+    # if robinhood is not installed, use rbh_cksum.sh from script directory 
+    if [ -d "../../src/robinhood" ]; then
+        export PATH="$PATH:../../scripts/"
+    # else use the installed one
+    fi
 
     # run before 5s (no checksumming: last_mod < 5)
     echo "No sum (last_mod criteria for new entries)"
@@ -3737,7 +4008,7 @@ function test_checker
     touch $RH_ROOT/file.3
 
     :> rh_migr.log
-    # rerun (changes occured!)
+    # rerun (changes occurred!)
     sleep 5
     echo "New sum (last_check OK)"
     $RH -f $RBH_CFG_DIR/$config_file --run=checksum --target=all -l DEBUG -L rh_migr.log ||
@@ -3753,6 +4024,92 @@ function test_checker
     done
 }
 
+function test_action_check
+{
+    # Test the check of outstanding actions
+    local config_file=$1
+    local FCOUNT=50
+    local ACT_TIMEO=4
+
+    if (( $is_lhsm == 0 )); then
+        echo "No asynchronous archive for this purpose: skipped"
+        set_skipped
+        return 1
+    fi
+
+    clean_logs
+
+    echo "Create Files ..."
+    for i in `seq 1 $FCOUNT` ; do
+        dd if=/dev/zero of=$RH_ROOT/file.$i bs=1M count=1 >/dev/null 2>/dev/null || error "writing file.$i"
+    done
+
+    echo "Start asynchonous actions..."
+    local t0=$(date +%s)
+    $RH -f $RBH_CFG_DIR/$config_file --scan --run=migration --target=all -I -l DEBUG -L rh_migr.log
+
+    # check status of files in DB:
+    $REPORT -f $RBH_CFG_DIR/$config_file --status-info lhsm --csv -q | tee report.out
+
+    find_valueInCSVreport report.out archiving $FCOUNT 3 || error "Invalid count of entries with status 'archiving'"
+
+    :>rh_migr.log
+    $RH -f $RBH_CFG_DIR/$config_file --run=migration -l VERB -L rh_migr.log &
+    local pid=$!
+
+    sleep 1
+
+    # is the check done?
+    grep -q "Checking status of outstanding actions" rh_migr.log ||
+        error "No check of outstanding actions was performed"
+
+    # early check of entries status (hopefully, no timeout reached yet? (3s))
+    local t1=$(date +%s)
+    local elapsed=$(($t1-$t0))
+    local nb_check=$(grep "Updating status of" rh_migr.log | wc -l)
+    if (( $elapsed < $ACT_TIMEO && $nb_check > 0 )); then
+        error "No action check should be done after $enlasped sec < $ACT_TIMEO"
+    else
+        echo "Enlapsed: $elapsed, nb_check=$nb_check"
+    fi
+
+    # next check is after 10 sec
+    sleep 10
+
+    local run_check=$(grep "Checking status of outstanding actions" rh_migr.log | wc -l)
+    (( $run_check == 2 )) || error "No 2nd check was done after 10 sec"
+
+    t1=$(date +%s)
+    elapsed=$(($t1-$t0))
+    nb_check=$(grep "Updating status of" rh_migr.log | wc -l)
+    local nb_sync=$(grep "changed: now 'synchro'" rh_migr.log | wc -l)
+    if (( $nb_check != $FCOUNT )); then
+        error "All actions should have been checked now (elapsed: $elapsed, nb_check=$nb_check)"
+    else
+        echo "Enlapsed: $elapsed, nb_check=$nb_check, $nb_sync changed to 'synchro'"
+    fi
+
+    # wait for all files to be synchro
+    if (( $nb_sync < $FCOUNT )); then
+        # once all actions are finished, check entry status changed accordingly
+        (( $is_lhsm != 0 )) && wait_done 30
+
+        # wait for next status check
+        local t2=$(date +%s)
+        (( $t2-$t1 < 10)) && sleep $((10 - ($t2-$t1)))
+        nb_sync=$(grep "changed: now 'synchro'" rh_migr.log | wc -l)
+        echo "$nb_sync entries/$FCOUNT changed to status 'synchro'"
+        (( $nb_sync != $FCOUNT )) && error "All entries status should have been set to 'synchro'"
+    fi
+
+    # double-check in report
+    $REPORT -f $RBH_CFG_DIR/$config_file --status-info lhsm --csv -q | tee report.out
+    find_valueInCSVreport report.out synchro $FCOUNT 3 || error "Invalid count of entries with status 'synchro'"
+
+    kill -9 $pid
+}
+
+
 function test_cnt_trigger
 {
 	config_file=$1
@@ -3763,7 +4120,7 @@ function test_cnt_trigger
 	clean_logs
 
 	if (( $is_hsmlite != 0 )); then
-        # this mode may create an extra inode in filesystem: inital scan
+        # this mode may create an extra inode in filesystem: initial scan
         # to take it into account
 		$RH -f $RBH_CFG_DIR/$config_file --scan --once -l MAJOR -L rh_scan.log || error "executing $CMD --scan"
 		check_db_error rh_scan.log
@@ -3824,6 +4181,12 @@ function test_ost_trigger
 
     export ost_high_vol="${mb_h_threshold}MB"
     export ost_low_vol="${mb_l_threshold}MB"
+
+    if [ -n "$POSIX_MODE" ]; then
+        echo "No OST support for POSIX mode"
+        set_skipped
+        return 1
+    fi
 
 	clean_logs
 
@@ -4010,7 +4373,7 @@ function test_trigger_check
     wait_stable_df
 
 	if (( $is_hsmlite != 0 )); then
-        # this mode may create an extra inode in filesystem: inital scan
+        # this mode may create an extra inode in filesystem: initial scan
         # to take it into account
 		$RH -f $RBH_CFG_DIR/$config_file --scan --once -l MAJOR -L rh_scan.log || error "executing $CMD --scan"
 		check_db_error rh_scan.log
@@ -4086,16 +4449,16 @@ function test_trigger_check
 
 	nb_release=`grep "$REL_STR" rh_purge.log | wc -l`
 
-	count_trig=`grep " entries must be purged in Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	count_trig=`grep " entries must be processed in Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	[ -n "$count_trig" ] || count_trig=0
 
-	vol_fs_trig=`grep " blocks (x512) must be purged on Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	vol_fs_trig=`grep " blocks (x512) must be processed on Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	((vol_fs_trig_mb=$vol_fs_trig/2048)) # /2048 == *512/1024/1024
 
-	vol_user_trig=`grep " blocks (x512) must be purged for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	vol_user_trig=`grep " blocks (x512) must be processed for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	((vol_user_trig_mb=$vol_user_trig/2048)) # /2048 == *512/1024/1024
 
-	cnt_user_trig=`grep " files must be purged for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	cnt_user_trig=`grep " files to be processed for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	[ -n "$cnt_user_trig" ] || cnt_user_trig=0
 
 	echo "triggers reported: $count_trig entries (global), $cnt_user_trig entries (user), $vol_fs_trig_mb MB (global), $vol_user_trig_mb MB (user)"
@@ -4138,106 +4501,109 @@ function check_released
 
 function test_periodic_trigger
 {
-	config_file=$1
-	sleep_time=$2
-	policy_str=$3
+    config_file=$1
+    sleep_time=$2
+    policy_str=$3
 
-	clean_logs
+    clean_logs
 
-	t0=`date +%s`
-	echo "1-Populating filesystem..."
-	# create 3 files of each type
-	# (*.1, *.2, *.3, *.4)
-	for i in `seq 1 4`; do
-		dd if=/dev/zero of=$RH_ROOT/file.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/file.$i"
-		dd if=/dev/zero of=$RH_ROOT/foo.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/foo.$i"
-		dd if=/dev/zero of=$RH_ROOT/bar.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/bar.$i"
+    t0=`date +%s`
+    echo "1-Populating filesystem..."
+    # create 3 files of each type
+    # (*.1, *.2, *.3, *.4)
+    for i in `seq 1 4`; do
+        dd if=/dev/zero of=$RH_ROOT/file.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/file.$i"
+        dd if=/dev/zero of=$RH_ROOT/foo.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/foo.$i"
+        dd if=/dev/zero of=$RH_ROOT/bar.$i bs=1M count=1 >/dev/null 2>/dev/null || error "$? writing $RH_ROOT/bar.$i"
 
-    	flush_data
-		if (( $is_lhsm != 0 )); then
-			$LFS hsm_archive $RH_ROOT/file.$i $RH_ROOT/foo.$i $RH_ROOT/bar.$i
-		fi
-	done
+        flush_data
+        if (( $is_lhsm != 0 )); then
+            $LFS hsm_archive $RH_ROOT/file.$i $RH_ROOT/foo.$i $RH_ROOT/bar.$i
+        fi
+    done
 
-	if (( $is_lhsm != 0 )); then
-		wait_done 60 || error "Copy timeout"
-	fi
-
-
-	# scan
-	echo "2-Populating robinhood database (scan)..."
-	if (( $is_hsmlite != 0 )); then
-        # scan and sync
-		$RH -f $RBH_CFG_DIR/$config_file --scan $SYNC_OPT -l DEBUG  -L rh_migr.log || error "executing $CMD --sync"
-  		check_db_error rh_migr.log
-    else
-	    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l DEBUG -L rh_scan.log || error "executing $CMD --scan"
-  		check_db_error rh_scan.log
+    if (( $is_lhsm != 0 )); then
+        wait_done 60 || error "Copy timeout"
     fi
 
-	# make sure files are old enough
-	sleep 2
 
-	# start periodic trigger in background
-	echo "3.1-checking trigger for first policy run..."
-	$RH -f $RBH_CFG_DIR/$config_file --run=purge -l DEBUG -L rh_purge.log &
-	sleep 2
+    # scan
+    echo "2-Populating robinhood database (scan)..."
+    if (( $is_hsmlite != 0 )); then
+        # scan and sync
+        $RH -f $RBH_CFG_DIR/$config_file --scan $SYNC_OPT -l DEBUG  -L rh_migr.log || error "executing $CMD --sync"
+          check_db_error rh_migr.log
+    else
+        $RH -f $RBH_CFG_DIR/$config_file --scan --once -l DEBUG -L rh_scan.log || error "executing $CMD --scan"
+          check_db_error rh_scan.log
+    fi
 
-	t1=`date +%s`
-	((delta=$t1 - $t0))
+    # make sure files are old enough
+    sleep 2
 
-    clean_caches # blocks is cached
-	# it first must have purged *.1 files (not others)
-	check_released "$RH_ROOT/file.1" || error "$RH_ROOT/file.1 should have been released after $delta s"
-	check_released "$RH_ROOT/foo.1"  || error "$RH_ROOT/foo.1 should have been released after $delta s"
-	check_released "$RH_ROOT/bar.1"  || error "$RH_ROOT/bar.1 should have been released after $delta s"
-	check_released "$RH_ROOT/file.2" && error "$RH_ROOT/file.2 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/foo.2"  && error "$RH_ROOT/foo.2 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/bar.2"  && error "$RH_ROOT/bar.2 shouldn't have been released after $delta s"
+    # start periodic trigger in background
+    echo "3.1-checking trigger for first policy run..."
+    $RH -f $RBH_CFG_DIR/$config_file --run=purge -l DEBUG -L rh_purge.log &
+    sleep 2
 
-	((sleep_time=$sleep_time-$delta))
-	sleep $(( $sleep_time + 2 ))
-	# now, *.2 must have been purged
-	echo "3.2-checking trigger for second policy run..."
-
-	t2=`date +%s`
-	((delta=$t2 - $t0))
+    t1=`date +%s`
+    ((delta=$t1 - $t0))
 
     clean_caches # blocks is cached
-	check_released "$RH_ROOT/file.2" || error "$RH_ROOT/file.2 should have been released after $delta s"
-	check_released "$RH_ROOT/foo.2" || error "$RH_ROOT/foo.2 should have been released after $delta s"
-	check_released "$RH_ROOT/bar.2" || error "$RH_ROOT/bar.2 should have been released after $delta s"
-	check_released "$RH_ROOT/file.3" && error "$RH_ROOT/file.3 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/foo.3"  && error "$RH_ROOT/foo.3 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/bar.3" && error "$RH_ROOT/bar.3 shouldn't have been released after $delta s"
+    # it first must have purged *.1 files (not others)
+    check_released "$RH_ROOT/file.1" || error "$RH_ROOT/file.1 should have been released after $delta s"
+    check_released "$RH_ROOT/foo.1"  || error "$RH_ROOT/foo.1 should have been released after $delta s"
+    check_released "$RH_ROOT/bar.1"  || error "$RH_ROOT/bar.1 should have been released after $delta s"
+    check_released "$RH_ROOT/file.2" && error "$RH_ROOT/file.2 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/foo.2"  && error "$RH_ROOT/foo.2 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/bar.2"  && error "$RH_ROOT/bar.2 shouldn't have been released after $delta s"
 
-	# wait 20 more secs (so another purge policy is applied)
-	sleep 20
-	# now, it's *.3
-	# *.4 must be preserved
-	echo "3.3-checking trigger for third policy..."
+    ((sleep_time=$sleep_time-$delta))
+    sleep $(( $sleep_time + 5 ))
+    # now, *.2 must have been purged
+    echo "3.2-checking trigger for second policy run..."
 
-	t3=`date +%s`
-	((delta=$t3 - $t0))
+    t2=`date +%s`
+    ((delta=$t2 - $t0))
 
     clean_caches # blocks is cached
-	check_released "$RH_ROOT/file.3" || error "$RH_ROOT/file.3 should have been released after $delta s"
-	check_released "$RH_ROOT/foo.3"  || error "$RH_ROOT/foo.3 should have been released after $delta s"
-	check_released "$RH_ROOT/bar.3"  || error "$RH_ROOT/bar.3 should have been released after $delta s"
-	check_released "$RH_ROOT/file.4" && error "$RH_ROOT/file.4 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/foo.4"  && error "$RH_ROOT/foo.4 shouldn't have been released after $delta s"
-	check_released "$RH_ROOT/bar.4"  && error "$RH_ROOT/bar.4 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/file.2" || error "$RH_ROOT/file.2 should have been released after $delta s ($(date))"
+    check_released "$RH_ROOT/foo.2" || error "$RH_ROOT/foo.2 should have been released after $delta s ($(date))"
+    check_released "$RH_ROOT/bar.2" || error "$RH_ROOT/bar.2 should have been released after $delta s ($(date))"
+    check_released "$RH_ROOT/file.3" && error "$RH_ROOT/file.3 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/foo.3"  && error "$RH_ROOT/foo.3 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/bar.3" && error "$RH_ROOT/bar.3 shouldn't have been released after $delta s"
 
-	# final check: 3x "Policy run summary: [...] 3 successful actions"
-    nb_pass=$(grep -c "Policy run summary:.* 3 successful actions" rh_purge.log)
-	if (( $nb_pass == 3 )); then
-		echo "OK: triggered 3 times"
-	else
-		error "unexpected trigger count $nb_pass (in $delta sec)"
-	fi
+    # wait 20 more secs (so another purge policy is applied)
+    sleep 20
+    # now, it's *.3
+    # *.4 must be preserved
+    echo "3.3-checking trigger for third policy..."
 
-	# terminate
-	pkill -9 $PROC
+    t3=`date +%s`
+    ((delta=$t3 - $t0))
+
+    clean_caches # blocks is cached
+    check_released "$RH_ROOT/file.3" || error "$RH_ROOT/file.3 should have been released after $delta s"
+    check_released "$RH_ROOT/foo.3"  || error "$RH_ROOT/foo.3 should have been released after $delta s"
+    check_released "$RH_ROOT/bar.3"  || error "$RH_ROOT/bar.3 should have been released after $delta s"
+    check_released "$RH_ROOT/file.4" && error "$RH_ROOT/file.4 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/foo.4"  && error "$RH_ROOT/foo.4 shouldn't have been released after $delta s"
+    check_released "$RH_ROOT/bar.4"  && error "$RH_ROOT/bar.4 shouldn't have been released after $delta s"
+
+    # final check: 3x "Policy run summary: [...] 3 successful actions"
+    nb_pass=$(grep -c "Checking trigger " rh_purge.log)
+    # trig count should be (elapsed/period) +/- 1
+    min_trig=$(($delta/10 - 1))
+    max_trig=$(($delta/10 + 1))
+    if (( $nb_pass < $min_trig )) || (( $nb_pass > $max_trig )); then
+        error "unexpected trigger count $nb_pass (in $delta sec)"
+    else
+        echo "OK: triggered $nb_pass times in $delta sec"
+    fi
+
+    # terminate
+    pkill -9 $PROC
 }
 
 function fileclass_test
@@ -4327,7 +4693,7 @@ function fileclass_test
     done
 
 	echo "3-Applying migration policy ($policy_str)..."
-	# start a migration files should notbe migrated this time
+	# start a migration files should not be migrated this time
 	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l FULL -L rh_migr.log   || error ""
 
     [ "$DEBUG" = "1" ] && grep action_params rh_migr.log
@@ -4343,8 +4709,16 @@ function fileclass_test
 	(( $nb_pol3 == 8 )) || error "********** TEST FAILED: wrong count of matching files for fileclass 'odd_or_A': $nb_pol3"
 	(( $nb_pol4 == 2 )) || error "********** TEST FAILED: wrong count of matching files for fileclass 'unmatched': $nb_pol4"
 
-	(( $nb_pol1 == 2 )) && (( $nb_pol2 == 4 )) && (( $nb_pol3 == 8 )) \
-		&& (( $nb_pol4 == 2 )) && echo "OK: test successful"
+    # test rbh-find -class option
+    cfg=$RBH_CFG_DIR/$config_file
+    check_find "" "-f $cfg -class even_and_B -lsclass" 2
+    check_find "" "-f $cfg -b -class even_and_B -lsclass" 2
+    check_find $RH_ROOT "-f $cfg -class even_and_B -lsclass" 2
+    check_find $RH_ROOT "-f $cfg -b -class even_and_B -lsclass" 2
+    check_find $RH_ROOT "-f $cfg -class even* -lsclass" 6
+    check_find $RH_ROOT "-f $cfg -b -class even* -lsclass" 6
+    check_find $RH_ROOT "-f $cfg -not -class even* -lsclass" 14
+    check_find $RH_ROOT "-f $cfg -b -not -class even* -lsclass" 14
 }
 
 function test_info_collect
@@ -4517,6 +4891,8 @@ function test_info_collect2
 		scan_chk $config_file
         check_fcount 10000
         empty_fs
+        # sleep 1 to ensure md_update >= 1s
+        sleep 1
 		scan_chk $config_file
         check_fcount 0
 	elif (( $flavor == 2 )); then
@@ -4529,6 +4905,8 @@ function test_info_collect2
 		readlog_chk $config_file
         check_fcount 10000
         empty_fs
+        # sleep 1 to ensure md_update >= 1s
+        sleep 1
 		scan_chk    $config_file
         check_fcount 0
 	elif (( $flavor == 3 )); then
@@ -4541,6 +4919,8 @@ function test_info_collect2
 		scan_chk    $config_file
         check_fcount 10000
         empty_fs
+        # sleep 1 to ensure md_update >= 1s
+        sleep 1
 		scan_chk    $config_file
         check_fcount 0
 	elif (( $flavor == 4 )); then
@@ -4557,6 +4937,8 @@ function test_info_collect2
         diff_chk $config_file
         check_fcount 10000
         empty_fs
+        # sleep 1 to ensure md_update >= 1s
+        sleep 1
         diff_chk $config_file
         check_fcount 0
 	else
@@ -4682,13 +5064,13 @@ function partial_paths
     touch $RH_ROOT/dir3/file4
 
     # initial scan
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
     check_db_error rh_scan.log
 
     # remove a path component from the DB
     id=$(get_id $RH_ROOT/dir1/dir2)
     [ -z $id ] && error "could not get id"
-    # FIXEME only for Lustre 2.x
+    # FIXME only for Lustre 2.x
     mysql $RH_DB -e "DELETE FROM NAMES WHERE id='$id'" || error "DELETE request"
 
 	if (( $is_hsmlite + $is_lhsm > 0 )); then
@@ -4796,7 +5178,7 @@ function test_mnt_point
     done
 
     # scan the filesystem
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
     check_db_error rh_scan.log
 
     # check that rbh-find output is correct (2 methods)
@@ -4826,6 +5208,528 @@ function test_mnt_point
             ls -d $BKROOT/${e}__* || error "$BKROOT/$e* not found in backend"
         done
     fi
+}
+
+function uid_gid_as_numbers
+{
+	config_file=$1
+
+	clean_logs
+    $CFG_SCRIPT empty_db $RH_DB > /dev/null
+
+    # create the following files with different owners/groups:
+    #
+    #   -rw-r--r-- 1       0      0     10 Jun  7 13:40 file1
+    #   -rw-r--r-- 1      12     16    100 Jun  7 13:40 file2
+    #   -rw-r--r-- 1 7856568 345654   1000 Jun  7 13:40 file3
+    #   -rw-r--r-- 1       0 645767  10000 Jun  7 13:40 file4
+    #   -rw-r--r-- 1 3476576      0 100000 Jun  7 13:40 file5
+
+    echo "1-Creating files..."
+    rm -f $RH_ROOT/file[1-4]
+    dd if=/dev/zero of=$RH_ROOT/file1 bs=10 count=1 >/dev/null 2>/dev/null || error "writing file"
+    dd if=/dev/zero of=$RH_ROOT/file2 bs=100 count=1 >/dev/null 2>/dev/null || error "writing file"
+    dd if=/dev/zero of=$RH_ROOT/file3 bs=1000 count=1 >/dev/null 2>/dev/null || error "writing file"
+    dd if=/dev/zero of=$RH_ROOT/file4 bs=10000 count=1 >/dev/null 2>/dev/null || error "writing file"
+    dd if=/dev/zero of=$RH_ROOT/file5 bs=100000 count=1 >/dev/null 2>/dev/null || error "writing file"
+
+    chown 0:0 $RH_ROOT/file1
+    chown 12:16 $RH_ROOT/file2
+    chown 7856568:345654 $RH_ROOT/file3
+    chown 0:645767 $RH_ROOT/file4
+    chown 3476576:0 $RH_ROOT/file5
+
+    echo "2-Initial scan of empty filesystem"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l FULL -L rh_scan.log  --once || error ""
+
+    echo "3-Check report"
+	$REPORT -f $RBH_CFG_DIR/$config_file -D --csv > rh_report.log
+    egrep --quiet "\s0,\s+0,.*/file1" rh_report.log || error "bad for file1"
+    egrep --quiet "\s12,\s+16,.*/file2" rh_report.log || error "bad for file2"
+    egrep --quiet "\s7856568,\s+345654,.*/file3" rh_report.log || error "bad for file3"
+    egrep --quiet "\s0,\s+645767,.*/file4" rh_report.log || error "bad for file4"
+    egrep --quiet "\s3476576,\s+0,.*/file5" rh_report.log || error "bad for file5"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --top-user > rh_report.log
+    # spc used (4th field) depends on filesystem preallocation algorithm: don't rely on it.
+    grep --quiet -e "1,    3476576,   97.66 KB, [^,]*,[ ]* 1,   97.66 KB" rh_report.log || error "bad top user1"
+    grep --quiet -e "2,          0,    9.78 KB, [^,]*,[ ]* 2,    4.89 KB" rh_report.log || error "bad top user3"
+    grep --quiet -e "3,    7856568,       1000, [^,]*,[ ]* 1,       1000" rh_report.log || error "bad top user3"
+    grep --quiet -e "4,         12,        100, [^,]*,[ ]* 1,        100" rh_report.log || error "bad top user3"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --top-size > rh_report.log
+    grep --quiet -e "1, [ ]* $RH_ROOT/file5,   97.66 KB,    3476576," rh_report.log || error "bad top size1"
+    grep --quiet -e "5, [ ]* $RH_ROOT/file1,         10,          0," rh_report.log || error "bad top size2"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump > rh_report.log
+    grep --quiet "file,       1000,    7856568,     345654,.*/file3" rh_report.log || error "bad dump1"
+    grep --quiet "Total: 5 entries, 111110 bytes" rh_report.log || error "bad dump2"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-user=root > rh_report.log
+    grep --quiet "Total: 2 entries, 10010 bytes (9.78 KB)" rh_report.log || error "bad dump user root"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-user=0 > rh_report.log
+    grep --quiet "Total: 2 entries, 10010 bytes (9.78 KB)" rh_report.log || error "bad dump user 0"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-user=7856568 > rh_report.log
+    grep --quiet "Total: 1 entries, 1000 bytes" rh_report.log || error "bad dump user 7856568"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-group=root > rh_report.log
+    grep --quiet "Total: 2 entries, 100010 bytes (97.67 KB)" rh_report.log || error "bad dump group root"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-group=0 > rh_report.log
+    grep --quiet "Total: 2 entries, 100010 bytes (97.67 KB)" rh_report.log || error "bad dump group root"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --dump-group=645767 > rh_report.log
+    grep --quiet "Total: 1 entries, 10000 bytes" rh_report.log || error "bad dump group 645767"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --fs-info > rh_report.log
+    grep --quiet "Total: 5 entries, volume: 111110 bytes" rh_report.log || error "bad fs info"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --user-info=root > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 10010 bytes" rh_report.log || error "bad info for user root"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --user-info=0 > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 10010 bytes" rh_report.log || error "bad info for user 0"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --user-info=7856568 > rh_report.log
+    grep --quiet "Total: 1 entries, volume: 1000 bytes" rh_report.log || error "bad info for user 7856568"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --group-info=0 > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 100010 bytes" rh_report.log || error "bad info for group 0"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --group-info=root > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 100010 bytes" rh_report.log || error "bad info for group root"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --group-info=645767 > rh_report.log
+    grep --quiet "Total: 1 entries, volume: 10000 bytes" rh_report.log || error "bad info for group 645767"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --entry-info=$RH_ROOT/file1 > rh_report.log
+    grep --quiet "user           : 	0$" rh_report.log || error "bad user for entry file1"
+    grep --quiet "group          : 	0$" rh_report.log || error "bad group for entry file1"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --entry-info=$RH_ROOT/file3 > rh_report.log
+    grep --quiet "user           : 	7856568$" rh_report.log || error "bad user for entry file3"
+    grep --quiet "group          : 	345654$" rh_report.log || error "bad group for entry file3"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo > rh_report.log
+    wc -l < rh_report.log | grep --quiet "^8$" || error "bad classinfo report"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=uroot1 > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 10010 bytes" rh_report.log || error "bad info for class root1"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=uroot2 > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 10010 bytes" rh_report.log || error "bad info for class root2"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=u7856568 > rh_report.log
+    grep --quiet "Total: 1 entries, volume: 1000 bytes" rh_report.log || error "bad info for class u7856568"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=g645767 > rh_report.log
+    grep --quiet "Total: 1 entries, volume: 10000 bytes" rh_report.log || error "bad info for class g645767"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=groot > rh_report.log
+    grep --quiet "Total: 2 entries, volume: 100010 bytes" rh_report.log || error "bad info for class groot"
+
+    $REPORT -f $RBH_CFG_DIR/$config_file --classinfo=mix > rh_report.log
+    grep --quiet "Total: 3 entries, volume: 101010 bytes" rh_report.log || error "bad info for class mix"
+
+    echo "4-Check rbh-find"
+    # rbh-find will also find the mount point which belong to root.
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls > find.out
+    egrep --quiet "\s0\s+0\s.*/file1" find.out || error "bad for file1"
+    egrep --quiet "\s12\s+16\s.*/file2" find.out || error "bad for file2"
+    egrep --quiet "\s7856568\s+345654\s.*/file3" find.out || error "bad for file3"
+    egrep --quiet "\s0\s+645767\s.*/file4" find.out || error "bad for file4"
+    egrep --quiet "\s3476576\s+0\s.*/file5" find.out || error "bad for file5"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -user 12 > find.out
+    wc -l < find.out | grep --quiet "^1$" || error "incorrect number of files found1"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -user 0 > find.out
+    wc -l < find.out | grep --quiet "^3$" || error "incorrect number of files found2"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -not -user 7856568 > find.out
+    wc -l < find.out | grep --quiet "^5$" || error "incorrect number of files found3"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -group 0 > find.out
+    wc -l < find.out | grep --quiet "^3$" || error "incorrect number of files found4"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -group 645767 > find.out
+    wc -l < find.out | grep --quiet "^1$" || error "incorrect number of files found5"
+
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -ls -not -group 345654 > find.out
+    wc -l < find.out | grep --quiet "^5$" || error "incorrect number of files found6"
+
+    echo "5-Check rbh-find with printf"
+    $FIND -f $RBH_CFG_DIR/$config_file $RH_ROOT -printf "%p:%g:%u\n" > find.out
+    grep --quiet "$RH_ROOT:0:0" find.out
+    grep --quiet "$RH_ROOT/file1:0:0" find.out || error "bad for file1"
+    grep --quiet "$RH_ROOT/file2:16:12" find.out || error "bad for file2"
+    grep --quiet "$RH_ROOT/file3:345654:7856568" find.out || error "bad for file3"
+    grep --quiet "$RH_ROOT/file4:645767:0" find.out || error "bad for file4"
+    grep --quiet "$RH_ROOT/file5:0:3476576" find.out || error "bad for file5"
+
+    echo "6-Check rbh-du"
+    # Each file has a precise size, so we know what the result in
+    # bytes will be for any combination
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b $RH_ROOT | egrep --quiet "^111110\s" || error "bad sum1"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -u 0 $RH_ROOT | egrep  --quiet "^10010\s" || error "bad sum2"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -u 12 $RH_ROOT | egrep  --quiet "^100\s" || error "bad sum3"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -u 1234 $RH_ROOT | egrep  --quiet "^0\s" || error "bad sum4"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -g 0 $RH_ROOT | egrep  --quiet "^100010\s" || error "bad sum5"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -g 645767 $RH_ROOT | egrep  --quiet "^10000\s" || error "bad sum6"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -g 1234 $RH_ROOT | egrep  --quiet "^0\s" || error "bad sum7"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -u 0 -g 16 $RH_ROOT | egrep --quiet "^0\s" || error "bad sum8"
+    $DU -f $RBH_CFG_DIR/$config_file -t f -b -u 0 -g 0 $RH_ROOT | egrep --quiet "^10\s" || error "bad sum9"
+}
+
+# Create a file and touch it to set atime/mtime. Check that crtime and
+# ctime are properly set, using the search criteria of rbh-find, and
+# display of rbh-report. Check that creation_time never changes while
+# ctime does.
+function posix_acmtime
+{
+    config_file=$1
+    local cfg=$RBH_CFG_DIR/$config_file
+    clean_logs
+
+    local org_RBH_TEST_LAST_ACCESS_ONLY_ATIME=${RBH_TEST_LAST_ACCESS_ONLY_ATIME}
+    export RBH_TEST_LAST_ACCESS_ONLY_ATIME=yes
+
+    # create file
+    echo "1-Creating file..."
+    rm -f $RH_ROOT/file
+    dd if=/dev/zero of=$RH_ROOT/file bs=10 count=1 >/dev/null 2>/dev/null || error "writing file"
+
+    # Set a given atime and mtime. touch can't change ctime.
+    touch -m -t 201004171230 $RH_ROOT/file
+    touch -a -t 201004171300 $RH_ROOT/file
+    stat $RH_ROOT/file | grep --quiet "Modify: 2010-04-17 12:30:00" || error "bad mtime"
+    stat $RH_ROOT/file | grep --quiet "Access: 2010-04-17 13:00:00" || error "bad atime"
+
+    echo "2-Initial scan of filesystem"
+    $RH -f $cfg --scan -l FULL -L rh_scan.log  --once || error ""
+
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $RH_ROOT/file > report.out
+
+    # Check that the DB has the correct atime and mtime
+    egrep --quiet "last_mod\s+:\s+2010/04/17 12:30:00" report.out || error "bad mtime"
+    egrep --quiet "last_access\s+:\s+2010/04/17 13:00:00" report.out || error "bad atime"
+
+    # Ensure that the DB and FS agree on atime/mtime and ctime, this
+    # time using rbh-find.
+    local real_acmtime=$(stat -c '%X %Y %Z' $RH_ROOT/file)
+    local db_acmtime=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%As %Ts %Cs")
+    [[ $real_acmtime == $db_acmtime ]] || error "FS and DB times don't match1"
+
+    local crtime=$(egrep "creation\s+:" report.out)
+    local ctime=$(egrep "last_mdchange\s+:" report.out)
+
+    # Check crtime and ctime in a small time interval
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -crtime -30s) ]] || error "file not found1"
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -crtime +1s) ]] && error "file found1"
+
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -ctime -30s) ]] || error "file not found2"
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -ctime +1s) ]] && error "file found2"
+
+    echo "3-Change mtime"
+
+    # Sleep lomg enough the time to change by at least one second, so ctime will be
+    # updatedwhen the file is touched.
+    sleep 5
+
+    # Again, check crtime and ctime. Both must fail as the file is at
+    # least 5s old now.
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -crtime -1s) ]] && error "file found3"
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -ctime -1s) ]] && error "file found4"
+
+    # Make mtime > atime. Normally last_access would take the value of
+    # the most recent of atime and mtime, but with the
+    # last_access_only_atime option, it should stay at atime.
+    touch -m -t 201004171400 $RH_ROOT/file
+    stat $RH_ROOT/file | grep --quiet "Modify: 2010-04-17 14:00:00" || error "bad mtime"
+    stat $RH_ROOT/file | grep --quiet "Access: 2010-04-17 13:00:00" || error "bad atime"
+    $RH -f $cfg --scan -l FULL -L rh_scan.log  --once || error ""
+    $REPORT -f $RBH_CFG_DIR/$config_file -e $RH_ROOT/file > report.out
+
+    # Again, check crtime and ctime. Hopefully less than 5 seconds
+    # elapsed between touch and this command.
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -crtime -4s) ]] && error "file found1"
+    [[ $($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -ctime -4s) ]] || error "file not found2"
+
+    egrep --quiet "last_mod\s+:\s+2010/04/17 14:00:00" report.out || error "bad mtime"
+    egrep --quiet "last_access\s+:\s+2010/04/17 13:00:00" report.out || error "bad atime"
+
+    # Check that FS and DB agree, using rbh-find
+    local real_acmtime=$(stat -c '%X %Y %Z' $RH_ROOT/file)
+    local db_acmtime=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%As %Ts %Cs")
+    [[ $real_acmtime == $db_acmtime ]] || error "FS and DB times don't match2"
+
+    # Check that FS and DB agree, using rbh-report
+    local newcrtime=$(egrep "creation\s+:" report.out)
+    local newctime=$(egrep "last_mdchange\s+:" report.out)
+
+    [[ $ctime != $newctime ]] || error "ctime hasn't changed"
+    [[ $crtime = $newcrtime ]] || error "creation time has changed"
+
+    ctime=$newctime
+
+    echo "4-Change atime"
+    touch -a -t 201004171600 $RH_ROOT/file
+
+    stat $RH_ROOT/file | grep --quiet "Modify: 2010-04-17 14:00:00" || error "bad mtime"
+    stat $RH_ROOT/file | grep --quiet "Access: 2010-04-17 16:00:00" || error "bad atime"
+
+    $RH -f $cfg --scan -l FULL -L rh_scan.log  --once || error ""
+
+    # Check that FS and DB agree, using rbh-find
+    local real_acmtime=$(stat -c '%X %Y %Z' $RH_ROOT/file)
+    local db_acmtime=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%As %Ts %Cs")
+    [[ $real_acmtime == $db_acmtime ]] || error "FS and DB times don't match3"
+
+    # Check that FS and DB agree, using rbh-report
+    local newcrtime=$(egrep "creation\s+:" report.out)
+    local newctime=$(egrep "last_mdchange\s+:" report.out)
+
+    [[ $ctime = $newctime ]] || error "ctime has changed"
+    [[ $crtime = $newcrtime ]] || error "creation time has changed"
+
+    export RBH_TEST_LAST_ACCESS_ONLY_ATIME=${org_RBH_TEST_LAST_ACCESS_ONLY_ATIME}
+}
+
+# check that changing ACCT schema updates triggers code
+function check_acct_update_triggers
+{
+    local log=$1
+
+    grep "dropping and repopulating table ACCT_STAT" $log || return 0
+
+    # there was an ACCT_STAT change, triggers should have been updated
+    grep "trigger ACCT_ENTRY" $log || error "Triggers should have been updated"
+}
+
+# test various scenarios of DB schema changes
+function db_schema_convert
+{
+    local schema25=$RBH_CFG_DIR/rbh25.sql
+    local cfg1=$RBH_CFG_DIR/test1.conf
+    local cfg2=$RBH_CFG_DIR/test_checker.conf
+    local cfg3=$RBH_CFG_DIR/test_checker_invert.conf
+
+    # import Robinhood 2.5 DB schema
+    mysql $RH_DB < $schema25 || error "importing DB schema"
+    # set the right FS path to allow running robinhood commands
+    mysql $RH_DB -e "UPDATE VARS SET value='$RH_ROOT' WHERE varname='FS_Path'"
+
+    local nbent=100
+    populate $nbent
+
+    :> rh.log
+    echo "rbh-report"
+    # run rbhv3 report
+    $REPORT -f $cfg1 -i -l FULL 2>&1 > rh.log
+    [ "$DEBUG" = "1" ] && cat rh.log
+
+    # robinhood should have suggested to run '--alter-db'
+    grep "Run 'robinhood --alter-db'" rh.log || error "robinhood should have reported DB schema changes"
+
+    # no ALTER TABLE expected
+    grep "ALTER TABLE" rh.log && error "no ALTER TABLE expected"
+
+    :> rh.log
+    echo "robinhood (no alter-db)"
+    # run a simple rbhv3 over this initial schema
+    $RH -f $cfg1 --scan --once -l FULL -L rh.log
+
+    # robinhood should have suggested to run '--alter-db'
+    grep "Run 'robinhood --alter-db'" rh.log || error "robinhood should have reported DB schema changes"
+    # it should change the default size
+    grep "Changing default value of 'ENTRIES.size'" rh.log || error "default value should have been changed"
+    grep "ALTER COLUMN size SET DEFAULT 0" rh.log || error "change of default size expected"
+
+    # no other ALTER TABLE expected
+    grep -v "SET DEFAULT" rh.log | grep "ALTER TABLE" && error "no ALTER TABLE expected"
+
+    :> rh.log
+    echo "robinhood --alter-db"
+    # run alter DB on initial schema
+    $RH -f $cfg1 --alter-db -l FULL -L rh.log
+
+    [ "$DEBUG" = "1" ] && cat rh.log
+    grep "ALTER TABLE" rh.log || error "ALTER TABLE expected"
+    check_acct_update_triggers rh.log
+
+    # after alter, no more DB change should be reported
+    :> rh.log
+
+    echo "robinhood on converted DB"
+    $RH -f $cfg1 --scan --once -l VERB -L rh.log
+    grep "DB schema change detected" rh.log && error "DB should be right"
+    check_db_error rh.log
+    [ "$DEBUG" = "1" ] && cat rh.log
+    :> rh.log
+    $REPORT -f $cfg1 -i > rh.log || error "Report should succeed"
+    grep "Run 'robinhood --alter-db'" rh.log && error "DB should be right"
+    [ "$DEBUG" = "1" ] && cat rh.log
+    config_file=$(basename $cfg1) check_fcount $nbent
+
+    # now use cfg2
+    :> rh.log
+    echo "cfg2: robinhood (no alter-db)"
+    # run a simple rbhv3 over this initial schema
+    $RH -f $cfg2 --scan --once -l FULL -L rh.log
+
+    # robinhood should have suggested to run '--alter-db'
+    grep "Run 'robinhood --alter-db'" rh.log || error "robinhood should have reported DB schema changes"
+
+    # no ALTER TABLE expected
+    grep "ALTER TABLE" rh.log && error "no ALTER TABLE expected"
+
+    :> rh.log
+    echo "cfg2: robinhood --alter-db"
+    # run alter DB on initial schema
+    $RH -f $cfg2 --alter-db -l FULL -L rh.log
+
+    [ "$DEBUG" = "1" ] && cat rh.log
+    grep "ALTER TABLE" rh.log || error "ALTER TABLE expected"
+    check_acct_update_triggers rh.log
+
+    # after alter, no more DB change should be reported
+    :> rh.log
+    echo "cfg2: robinhood on converted DB"
+    $RH -f $cfg2 --scan --once -l VERB -L rh.log
+    grep "DB schema change detected" rh.log && error "DB should be right"
+    check_db_error rh.log
+    [ "$DEBUG" = "1" ] && cat rh.log
+    :> rh.log
+    $REPORT -f $cfg2 -i > rh.log || error "Report should succeed"
+    grep "Run 'robinhood --alter-db'" rh.log && error "DB should be right"
+    [ "$DEBUG" = "1" ] && cat rh.log
+    config_file=$(basename $cfg2) check_fcount $nbent
+
+    # test inversion only if the tested mode has a status manager
+    if [[ "$STATUS_MGR" != "none" ]]; then
+	    # now test inversion with cfg3
+	    :> rh.log
+	    echo "cfg3: robinhood (no alter-db)"
+	    # run a simple rbhv3 over this initial schema
+	    $RH -f $cfg3 --scan --once -l FULL -L rh.log
+
+	    # robinhood must report field shuffling
+	    grep "Shuffled DB fields" rh.log || error "lismgr should report shuffled fields"
+	    # alter is only required for the ACCT_STAT table
+	    grep "Run 'robinhood --alter-db'" rh.log | grep -v "modification in ACCT_STAT" && error "lismgr should deal with field shuffling"
+	    # no ALTER TABLE expected
+	    grep "ALTER TABLE" rh.log && error "no ALTER TABLE expected"
+
+	    :> rh.log
+	    # scan successful?
+	    echo "cfg3: scan"
+	    $RH -f $cfg3 --scan --once --alter-db -l MAJOR -L rh.log || error "scan failed"
+	    grep "FS Scan finished" rh.log || error "Scan failed?"
+	    # DB errors reported during scan?
+	    check_db_error rh.log
+
+	    # report should work
+	    echo "cfg3: report"
+	    $REPORT -f $cfg3 -i -l FULL 2>&1 > rh.log || error "Report should work"
+	    grep "Run 'robinhood --alter-db'" rh.log && error "DB should be right"
+	    [ "$DEBUG" = "1" ] && cat rh.log
+	    config_file=$(basename $cfg3) check_fcount $nbent
+    fi
+
+    # back to cfg1
+    echo "cfg1: report"
+    $REPORT -f $cfg1 -i -l FULL 2>&1 > rh.log || error "Report should work"
+    [ "$DEBUG" = "1" ] && cat rh.log
+    grep "Run 'robinhood --alter-db'" rh.log | grep -v "modification in ACCT_STAT" && error "report should deal with policy removal"
+    config_file=$(basename $cfg1) check_fcount $nbent
+
+    :> rh.log
+    echo "cfg1: robinhood (no alter-db)"
+    # run a simple rbhv3 over this initial schema
+    $RH -f $cfg1 --scan --once -l FULL -L rh.log
+
+    # robinhood should have suggested to run '--alter-db'
+    grep "Run 'robinhood --alter-db'" rh.log || error "robinhood should have reported DB schema changes"
+
+    # no ALTER TABLE expected
+    grep "ALTER TABLE" rh.log && error "no ALTER TABLE expected"
+
+    :> rh.log
+    echo "cfg1: robinhood --alter-db"
+    # run alter DB on initial schema
+    $RH -f $cfg1 --alter-db -l FULL -L rh.log
+
+    [ "$DEBUG" = "1" ] && cat rh.log
+    grep "ALTER TABLE" rh.log || error "ALTER TABLE expected"
+    grep "dropping and repopulating table ACCT_STAT" rh.log
+    grep "trigger ACCT_ENTRY" rh.log
+
+    # after alter, no more DB change should be reported
+    :> rh.log
+    echo "cfg1: robinhood on converted DB"
+    $RH -f $cfg1 --scan --once -l FULL -L rh.log
+    grep "DB schema change detected" rh.log && error "DB should be right"
+    check_db_error rh.log
+    [ "$DEBUG" = "1" ] && cat rh.log
+    :> rh.log
+    $REPORT -f $cfg1 -i > rh.log || error "Report should succeed"
+    grep "Run 'robinhood --alter-db'" rh.log && error "DB should be right"
+    [ "$DEBUG" = "1" ] && cat rh.log
+    config_file=$(basename $cfg1) check_fcount $nbent
+
+    # Test conversion from numeric to text uids.
+    # This is not supposed to be an upgrade path, but it is convenient
+    # to test type conversion routines.
+    if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+        :> rh.log
+        echo "Numeric to text conversion (no alter)..."
+        RBH_NUM_UIDGID=no $RH -f $cfg1 --scan --once -l FULL -L rh.log
+        # robinhood should have suggested to run '--alter-db'
+        grep "Run 'robinhood --alter-db'" rh.log || error "robinhood should have reported DB schema changes"
+
+        :> rh.log
+        echo "Numeric to text conversion (alter)..."
+        RBH_NUM_UIDGID=no $RH -f $cfg1 --alter-db -l FULL -L rh.log
+        [ "$DEBUG" = "1" ] && cat rh.log
+        grep "ALTER TABLE" rh.log || error "ALTER TABLE expected"
+        grep "dropping and repopulating table ACCT_STAT" rh.log
+        grep "trigger ACCT_ENTRY" rh.log
+    fi
+}
+
+# Create files with random names, and use rbh-find on them
+function random_names
+{
+    config_file=$1
+
+    local num_files=500
+
+    clean_logs
+    $CFG_SCRIPT empty_db $RH_DB > /dev/null
+
+    echo "1-Creating files..."
+    rm -rf $RH_ROOT/random/
+    mkdir $RH_ROOT/random/
+
+    echo Creating $num_files files with random names
+    $(dirname $0)/create-random $num_files 200 $RH_ROOT/random || error "creating files failed"
+    echo Done creating files
+
+    echo "2-Scan of filesystem"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l FULL -L rh_scan.log --once || error ""
+
+    echo "3-Find tests"
+    $FIND -f $RBH_CFG_DIR/$config_file -type f $RH_ROOT/random/ > find.out || error "find failed1"
+    $FIND -f $RBH_CFG_DIR/$config_file -type f -printf "file=%p\n" $RH_ROOT/random/ > find.out || error "find failed2"
+
+    # When the names are escaped, we will get 1 line per file
+    $FIND -f $RBH_CFG_DIR/$config_file -type f -printf "file=%p\n" --escaped $RH_ROOT/random/ > find.out || error "find failed3"
+    wc -l < find.out | grep --quiet "^${num_files}$" || error "should have found ${num_files} files"
+
+    echo "4-Cleanup"
+    rm -rf $RH_ROOT/random/
 }
 
 function check_status_count
@@ -4869,7 +5773,7 @@ function test_compress
 
     # scan the filesystem (compress=no)
     export compress=no
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
     check_db_error rh_scan.log
 
     # check file status
@@ -4948,7 +5852,7 @@ function test_compress
     done
 
     export compress=no
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
     check_db_error rh_scan.log
 
     # check file status
@@ -5036,6 +5940,12 @@ function test_enoent
 {
 	config_file=$1
 
+	if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+		echo "Incompatible configuration for numerical UID/GID: skipped"
+		set_skipped
+		return 1
+	fi
+
 	clean_logs
 
 	if (($no_log != 0)); then
@@ -5095,7 +6005,7 @@ function test_diff
 
     # initial scan
     echo "1-Initial scan..."
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
 
     # new entry (file & dir)
     touch $RH_ROOT/dir.1/file.new || error "touch"
@@ -5146,8 +6056,8 @@ function test_diff
     [ $nbrm  -eq 2 ] || error "$nbrm/2 removal"
     # changes
     grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.1") report.out  | grep mode= || error "missing chmod $RH_ROOT/dir.1"
-    grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.2") report.out | grep owner=testuser || error "missing chown $RH_ROOT/dir.2"
-    grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.1/a") report.out  | grep group=testgroup || error "missing chgrp $RH_ROOT/dir.1/a"
+    grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.2") report.out | grep owner=$testuser_str || error "missing chown $RH_ROOT/dir.2"
+    grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.1/a") report.out | grep group=$testgroup_str || error "missing chgrp $RH_ROOT/dir.1/a"
     grep "^+[^ ]*"$(get_id "$RH_ROOT/dir.1/c") report.out | grep size= || error "missing size change $RH_ROOT/dir.1/c"
 
     # dir2/d -> dir1/d
@@ -5190,7 +6100,7 @@ function test_diff_apply_fs # test diff --apply=fs in particular for entry recov
 
     # run initial scan
     echo "Initial scan..."
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
 
     # save contents of bin.1
     find $RH_ROOT/bin.1 -printf "%n %y %m %T@ %g %u %p %l\n" > find.out || error "find error"
@@ -5315,7 +6225,7 @@ function test_completion
 
     # do the scan
     echo "scan..."
-    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing inital scan"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --once -l EVENT -L rh_scan.log  || error "performing initial scan"
 
     # if flavor is OK: completion command must have been called
     if [ "$flavor" = "OK" ]; then
@@ -5435,7 +6345,7 @@ function test_rename
     mv -f $RH_ROOT/dir.2/file.1 $RH_ROOT/dir.2/file.2
     # 4) upper level directory rename
     mv $RH_ROOT/dir.3/subdir $RH_ROOT/dir.3/subdir.rnm
-    # 5) overwritting a hardlink
+    # 5) overwriting a hardlink
     mv -f $RH_ROOT/dir.2/file.4 $hlink
 
     # get target fids
@@ -5639,6 +6549,7 @@ function test_layout
     fsdiff=$($RH -f $RBH_CFG_DIR/$config_file --readlog --diff=stripe --once -l DEBUG -L rh_scan.log)
     (( $? == 0 )) || error "reading changelog (diff)"
 
+    [ "$DEBUG" = "1" ] && echo "$fsdiff"
     echo $fsdiff | egrep "\-.*,stripe_count=2,.* \+.*,stripe_count=1,.*" > /dev/null || error "missed layout change"
 
     rm -f $DSTFILE
@@ -6083,7 +6994,7 @@ function test_hardlinks
     mv -f $RH_ROOT/dir.2/file.1 $RH_ROOT/dir.2/file.2
     # 4) upper level directory rename
     mv $RH_ROOT/dir.3/subdir $RH_ROOT/dir.3/subdir.rnm
-    # 5) overwritting a hardlink
+    # 5) overwriting a hardlink
     mv -f $RH_ROOT/dir.2/file.4 ${hlinks[0]}
     ((nb_ln--))
     # 6) creating new link to "dir.4/file.1"
@@ -7043,7 +7954,7 @@ function recov_filters
         echo "sqdlqsldsqmdl" >> $RH_ROOT/dir.$d/delta || error "appending dir.$d/delta"
         # force modification (in case Lustre don't report small data changes)
         touch $RH_ROOT/dir.$d/delta || error "touching dir.$d/delta"
-        echo "qsldjkqlsdkqs" >> $RH_ROOT/dir.$d/nobkp || error "writting to dir.$d/nobkp"
+        echo "qsldjkqlsdkqs" >> $RH_ROOT/dir.$d/nobkp || error "writing to dir.$d/nobkp"
         mv $RH_ROOT/dir.$d/rename $RH_ROOT/dir.$d/rename.mv || error "renaming 'rename'"
         mv $RH_ROOT/dir.$d/empty_rnm $RH_ROOT/dir.$d/empty_rnm.mv || error "renaming 'empty_rnm'"
     done
@@ -7218,10 +8129,12 @@ function test_rbh_find_printf
 
     # create a file
     echo "1-Creating file..."
-    rm -f $RH_ROOT/testf
-    dd if=/dev/zero of=$RH_ROOT/testf bs=1k count=1 >/dev/null 2>/dev/null || error "writing file"
+    local srcfile=$RH_ROOT/test_printf/testf
+    rm -f $srcfile
+    mkdir -p $RH_ROOT/test_printf/
+    dd if=/dev/zero of=$srcfile bs=1k count=1 >/dev/null 2>/dev/null || error "writing file"
 
-    local fid=$(get_id "$RH_ROOT/testf")
+    local fid=$(get_id "$srcfile")
 
     if (( $no_log )); then
         echo "2-Scanning..."
@@ -7234,18 +8147,23 @@ function test_rbh_find_printf
 
     if (( $is_lhsm != 0 )); then
         echo "3-Archiving the files"
-        $LFS hsm_archive $RH_ROOT/testf || error "executing lfs hsm_archive"
+        $LFS hsm_archive $srcfile || error "executing lfs hsm_archive"
 
-        wait_hsm_state $RH_ROOT/testf 0x00000009
+        wait_hsm_state $srcfile 0x00000009
 
 	echo "4-Reading changelogs..."
 	$RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
 	check_db_error rh_chglogs.log
     fi
 
-    echo "5-rbh-find checks"
+    echo "5-Run checksum policy"
+    local before_run=$(date +%s)
+    $RH -f $RBH_CFG_DIR/$config_file --run=checksum --target=all -I -l DEBUG -L stdout | grep "Policy run summary"
+    local after_run=$(date +%s)
 
-    # Basic functionnality
+    echo "6-rbh-find checks"
+
+    # Basic functionality
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "")
     [[ $STR == "" ]] || error "unexpected rbh-find result (001): $STR"
 
@@ -7253,16 +8171,16 @@ function test_rbh_find_printf
     [[ $STR == "some string" ]] || error "unexpected rbh-find result (002): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "some string %p")
-    [[ $STR == "some string $RH_ROOT/testf" ]] || error "unexpected rbh-find result (003): $STR"
+    [[ $STR == "some string $srcfile" ]] || error "unexpected rbh-find result (003): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "some string %p after")
-    [[ $STR == "some string $RH_ROOT/testf after" ]] || error "unexpected rbh-find result (004): $STR"
+    [[ $STR == "some string $srcfile after" ]] || error "unexpected rbh-find result (004): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "X%%Y")
     [[ $STR == "X%Y" ]] || error "unexpected rbh-find result (005): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "some string %%%p after")
-    [[ $STR == "some string %$RH_ROOT/testf after" ]] || error "unexpected rbh-find result (006): $STR"
+    [[ $STR == "some string %$srcfile after" ]] || error "unexpected rbh-find result (006): $STR"
 
     # Test each directive
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "blocks=%b")
@@ -7272,7 +8190,7 @@ function test_rbh_find_printf
     [[ $STR == "testf bar" ]] || error "unexpected rbh-find result (101): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "group is %g")
-    [[ $STR == "group is root" ]] || error "unexpected rbh-find result (102): $STR"
+    [[ $STR == "group is $root_str" ]] || error "unexpected rbh-find result (102): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "hi   %M is mask")
     [[ $STR == "hi   rw-r--r-- is mask" ]] || error "unexpected rbh-find result (103): $STR"
@@ -7284,13 +8202,13 @@ function test_rbh_find_printf
     [[ $STR == "nlinks: 1" ]] || error "unexpected rbh-find result (105): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%p\n")
-    [[ $STR == "$RH_ROOT/testf" ]] || error "unexpected rbh-find result (106): $STR"
+    [[ $STR == "$srcfile" ]] || error "unexpected rbh-find result (106): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "size %s\n")
     [[ $STR == "size 1024" ]] || error "unexpected rbh-find result (107): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "owner %u\n")
-    [[ $STR == "owner root" ]] || error "unexpected rbh-find result (108): $STR"
+    [[ $STR == "owner $root_str" ]] || error "unexpected rbh-find result (108): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "type %Y\n")
     [[ $STR == "type file" ]] || error "unexpected rbh-find result (109): $STR"
@@ -7301,9 +8219,27 @@ function test_rbh_find_printf
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "short type %y\n")
     [[ $STR == "short type f" ]] || error "unexpected rbh-find result (111): $STR"
 
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%p\n")
+    [[ $STR == "$srcfile" ]] || error "unexpected rbh-find result (112): $STR"
+
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%f\n")
+    [[ $STR == "testf" ]] || error "unexpected rbh-find result (113): $STR"
+
+    STR=$($FIND $RH_ROOT/ -nobulk -type f -f $RBH_CFG_DIR/$config_file -printf "%p\n")
+    [[ $STR == "$srcfile" ]] || error "unexpected rbh-find result (114): $STR"
+
+    STR=$($FIND $RH_ROOT/ -nobulk -type f -f $RBH_CFG_DIR/$config_file -printf "%f\n")
+    [[ $STR == "testf" ]] || error "unexpected rbh-find result (115): $STR"
+
+    STR=$($FIND $RH_ROOT/test_printf -type f -f $RBH_CFG_DIR/$config_file -printf "%p\n")
+    [[ $STR == "$srcfile" ]] || error "unexpected rbh-find result (116): $STR"
+
+    STR=$($FIND $RH_ROOT/test_printf -type f -f $RBH_CFG_DIR/$config_file -printf "%f\n")
+    [[ $STR == "testf" ]] || error "unexpected rbh-find result (117): $STR"
+
     # Test each Robinhood sub-directive
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf " %Rc rh class\n")
-    [[ $STR == " [n/a] rh class" ]] || error "unexpected rbh-find result (200): $STR"
+    [[ $STR == " [none] rh class" ]] || error "unexpected rbh-find result (200): $STR"
 
     if (( $lustre_major >= 2 )); then
 	# exact match
@@ -7324,22 +8260,28 @@ function test_rbh_find_printf
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%RCF")
     [[ $STR == "$(date +%F)" ]] || error "unexpected rbh-find result (204): $STR"
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%RAF")
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%AF")
     [[ $STR == "$(date +%F)" ]] || error "unexpected rbh-find result (205): $STR"
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%RMF")
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%TF")
     [[ $STR == "$(date +%F)" ]] || error "unexpected rbh-find result (206): $STR"
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%RA-" 2>&1)
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%CF")
+    [[ $STR == "$(date +%F)" ]] || error "unexpected rbh-find result (206b): $STR"
+
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%A-" 2>&1)
     [[ $STR == *"%-"* ]] || error "unexpected rbh-find result (207): $STR" # NB: invalid format
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%RMG")
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%TG")
     [[ $STR == "$(date +%G)" ]] || error "unexpected rbh-find result (208): $STR"
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "QWERTY %RCc %RMA %RAp %RAT" 2>&1)
-    [[ $STR == *"QWERTY"* ]] || error "unexpected rbh-find result (209): $STR"
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%CG")
+    [[ $STR == "$(date +%G)" ]] || error "unexpected rbh-find result (209): $STR"
 
-    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "QWERTY %RCOe %RMOS %RAEx %RAEY" 2>&1)
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "QWERTY %RCc %TA %CA %Ap %AT" 2>&1)
+    [[ $STR == *"QWERTY"* ]] || error "unexpected rbh-find result (210): $STR"
+
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "QWERTY %RCOe %TOS %COS %AEx %AEY" 2>&1)
     [[ $STR == *"QWERTY"* ]] || error "unexpected rbh-find result (211): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "QWERTY %RCOA" 2>&1)
@@ -7356,10 +8298,10 @@ function test_rbh_find_printf
 
     # Test various combinations
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "FILE %p %s %Y %y %Rc %u %n and stop\n")
-    [[ $STR == "FILE $RH_ROOT/testf 1024 file f [n/a] root 1 and stop" ]] || error "unexpected rbh-find result (300): $STR"
+    [[ $STR == "FILE $srcfile 1024 file f [none] $root_str 1 and stop" ]] || error "unexpected rbh-find result (300): $STR"
 
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%s\t%d\t%y")
-    [[ $STR == "1024	0	f" ]] || error "unexpected rbh-find result (301): $STR"
+    [[ $STR == "1024	1	f" ]] || error "unexpected rbh-find result (301): $STR"
 
     # Test module attributes
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%Rm{}" 2>&1)
@@ -7384,6 +8326,15 @@ function test_rbh_find_printf
         STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%Rm{lhsm.status}")
         [[ $STR == "synchro" ]] || error "unexpected rbh-find result (406): $STR"
     fi
+
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%Rm{checksum.last_check}")
+    # last check must be between before_run and after_run
+    if [[ -z "$STR" ]] || (( $STR < $before_run )) || (( $STR > $after_run )); then
+        error "Unexpected checksum timestamp (407): $STR"
+    fi
+
+    STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "%Rm{checksum.status}")
+    [[ $STR == "ok" ]] || error "unexpected rbh-find result (408): $STR"
 
     # With some formatting options
     STR=$($FIND $RH_ROOT/ -type f -f $RBH_CFG_DIR/$config_file -printf "file='%15f' size=%09s")
@@ -7675,7 +8626,9 @@ function test_find
     #               file.2
     #               dir.1
     touch $RH_ROOT/file.1 || error "creating file"
+    chown daemon:bin $RH_ROOT/file.1
     touch $RH_ROOT/file.2 || error "creating file"
+    chown bin:wheel $RH_ROOT/file.2
     mkdir $RH_ROOT/dir.1 || error "creating dir"
     mkdir $RH_ROOT/dir.2 || error "creating dir"
     dd if=/dev/zero of=$RH_ROOT/dir.2/file.1 bs=1k count=10 2>/dev/null || error "creating file"
@@ -7738,11 +8691,28 @@ function test_find
     check_find "" "-f $cfg -name dir.*" 5 # 5
     check_find "" "-f $cfg -name dir.* -b" 5 # 5
     check_find $RH_ROOT "-f $cfg -name dir.*" 5 # 5
+    check_find $RH_ROOT "-f $cfg -not -name dir.*" 7 # all except 5
     check_find $RH_ROOT/dir.2 "-f $cfg -name dir.*" 4 # 4 including dir.2
     check_find $RH_ROOT/dir.2/dir.2 "-f $cfg -name dir.*" 2 # 2 including dir.2/dir.2
     check_find $RH_ROOT/dir.1 "-f $cfg -name dir.*" 1
     check_find $RH_ROOT/dir.2/dir.1 "-f $cfg -name dir.*" 1
     check_find $RH_ROOT/dir.2/dir.2/dir.1 "-f $cfg -name dir.*" 1
+
+    echo "testing name filter (case insensitive)..."
+    check_find "" "-f $cfg -iname Dir.*" 5 # match all "dir.*"
+    check_find "" "-f $cfg -b -iname Dir.*" 5
+    check_find "" "-f $cfg -iname dir.*" 5 # match all "dir.*"
+    check_find "" "-f $cfg -b -iname dir.*" 5
+    check_find $RH_ROOT "-f $cfg -name Dir.*" 0 # no match expected
+    check_find $RH_ROOT "-f $cfg -b -name Dir.*" 0
+    check_find $RH_ROOT "-f $cfg -iname Dir.*" 5 # match all "dir.*"
+    check_find $RH_ROOT "-f $cfg -b -iname Dir.*" 5
+    check_find $RH_ROOT "-f $cfg -iname dir.*" 5 # match all "dir.*"
+    check_find $RH_ROOT "-f $cfg -b -iname dir.*" 5
+    check_find $RH_ROOT "-f $cfg -not -iname Dir.*" 7 # all (12) except 5
+    check_find $RH_ROOT "-f $cfg -b -not -iname Dir.*" 7
+    check_find $RH_ROOT "-f $cfg -not -iname dir.*" 7 # all (12) except 5
+    check_find $RH_ROOT "-f $cfg -b -not -iname dir.*" 7
 
     echo "testing size filter..."
     check_find "" "-f $cfg -type f -size +2k" 2
@@ -7754,6 +8724,27 @@ function test_find
     check_find $RH_ROOT "-f $cfg -type f -size 10k" 1
     check_find $RH_ROOT "-f $cfg -type f -size -1M" 5
     check_find $RH_ROOT "-f $cfg -type f -size -10k" 4
+
+    echo "testing user/group filter..."
+    check_find $RH_ROOT "-f $cfg -user daemon" 1
+    check_find $RH_ROOT "-f $cfg -user bin" 1
+    check_find $RH_ROOT "-f $cfg -user adm" 0
+    check_find $RH_ROOT "-f $cfg -not -user adm" 12
+    check_find $RH_ROOT "-f $cfg -not -user daemon" 11
+    check_find $RH_ROOT "-f $cfg -not -user bin" 11
+
+    check_find $RH_ROOT "-f $cfg -group bin" 1
+    check_find $RH_ROOT "-f $cfg -group wheel" 1
+    check_find $RH_ROOT "-f $cfg -group sys" 0
+    check_find $RH_ROOT "-f $cfg -not -group sys" 12
+    check_find $RH_ROOT "-f $cfg -not -group bin" 11
+    check_find $RH_ROOT "-f $cfg -not -group wheel" 11
+
+    check_find $RH_ROOT "-f $cfg -user daemon -group bin" 1
+    check_find $RH_ROOT "-f $cfg -user daemon -group wheel" 0
+    check_find $RH_ROOT "-f $cfg -user daemon -not -group wheel" 1
+    check_find $RH_ROOT "-f $cfg -not -user daemon -not -group wheel" 10
+    check_find $RH_ROOT "-f $cfg -not -user daemon -not -group wheel -type f" 4
 
     if [ -z "$POSIX_MODE" ]; then
         echo "testing ost filter..."
@@ -8083,7 +9074,7 @@ function run_test
 		else
 			grep "Failed" $CLEAN 2>/dev/null
 			echo "TEST #$index : OK" >> $SUMMARY
-			SUCCES=$(($SUCCES+1))
+			SUCCESS=$(($SUCCESS+1))
 			if (( $junit )); then
 				junit_report_success "robinhood.$PURPOSE.Lustre" "Test #$index: $title" "$dur"
 			fi
@@ -8271,7 +9262,7 @@ function check_alert
 #	alertKey = alert name which is the string to find $occur times
 #	expectedEntries = list of word to find at least one time if alertKey is found
 #		ex: expectedEntry="file.1;file.2;file.3", expectedEntry="file.1" ...
-#	occur = expected nb of occurences for alertKey
+#	occur = expected nb of occurrences for alertKey
 #	logFile = name of the file to scan
 
 	# get input parameters ......................
@@ -8304,7 +9295,7 @@ function check_alert
 
 	else
 		# the alertKey has been not found as expected
-		echo "ERROR in check_alert: Bad number of occurences for $alertKey: expected=$occur & found=$nbOccur"
+		echo "ERROR in check_alert: Bad number of occurrences for $alertKey: expected=$occur & found=$nbOccur"
 		return 1
 	fi
 
@@ -8912,7 +9903,7 @@ function trigger_purge_QUOTA_EXCEEDED
 	indice=1
     while [ $elem -lt $limit ]
     do
-        # write 2M to fullfill 2 stripes
+        # write 2M to fulfill 2 stripes
         dd if=/dev/zero of=$RH_ROOT/file.$indice bs=2M count=1 conv=sync >/dev/null 2>/dev/null
         if (( $? != 0 )); then
             echo "WARNING: failed to write $RH_ROOT/file.$indice"
@@ -9027,7 +10018,7 @@ function trigger_purge_USER_GROUP_QUOTA_EXCEEDED
     dd_err_count=0
     while [ $elem -lt $limit ]
     do
-        # write 2M to fullfill 2 stripes
+        # write 2M to fulfill 2 stripes
         dd if=/dev/zero of=$RH_ROOT/file.$indice bs=2M count=1 conv=sync >/dev/null 2>$dd_out
         if (( $? != 0 )); then
             [[ -z "$one_error" ]] && one_error="failed to write $RH_ROOT/file.$indice: $(cat $dd_out)"
@@ -9674,6 +10665,12 @@ function test_report_generation_1
 	# get input parameters ....................
 	config_file=$1
 
+    if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+        echo "Test needs adaptation for numerical UID/GID: skipped"
+        set_skipped
+        return 1
+    fi
+
 	#  clean logs ..............................
 	clean_logs
 
@@ -9944,7 +10941,7 @@ function find_allValuesinCSVreport
 	    typeValue=${tabTypes[$iData]}
 	    countValue=${tabValues[$iData]}
 
-	    find_valueInCSVreport $logFile $typeValue $countValue $colSearch
+	    find_valueInCSVreport $logFile "$typeValue" "$countValue" $colSearch
 	    res=$?
 	    if (( $res == 1 )); then
 		    #error "Test for $alertKey failed"
@@ -9980,7 +10977,7 @@ function find_valueInCSVreport
     #echo "colSearch=$colSearch"
     #echo '-------------------------------------'
     # find line contains expected value type
-    line=$(grep $typeValue $logFile)
+    line=$(grep "$typeValue" $logFile)
     #echo $line
     if (( ${#line} == 0 )); then
 	    [ "$DEBUG" = "1" ] && echo "=====> NOT found for $typeValue" >&2
@@ -9988,13 +10985,13 @@ function find_valueInCSVreport
     fi
 
     # get found value count for this value type
-    foundCount=$(grep $typeValue $logFile | cut -d ',' -f $colSearch | tr -d ' ')
+    foundCount=$(grep "$typeValue" $logFile | cut -d ',' -f $colSearch | tr -d ' ')
     #echo "foundCount=$foundCount**"
     if [[ "$foundCount" != "$countValue" ]]; then
 	    [ "$DEBUG" = "1" ] && echo "=====> NOT found for $typeValue : $countValue != $foundCount" >&2
 	    return 1
     else
-	    [ "$DEBUG" = "1" ] && echo "=====> found for $typeValue : $countValue " >&2
+	    [ "$DEBUG" = "1" ] && echo "=====> found for $typeValue (col $colSearch): $countValue " >&2
 	    return 0
     fi
 }
@@ -10385,35 +11382,35 @@ function TEST_OTHER_PARAMETERS_3
 
 function TEST_OTHER_PARAMETERS_4
 {
-	# Test for many parameters
-	# 	TEST_OTHER_PARAMETERS_4 config_file
-	#=>
-	# config_file == config file name
+    # Test for many parameters
+    #     TEST_OTHER_PARAMETERS_4 config_file
+    #=>
+    # config_file == config file name
 
-	config_file=$1
+    config_file=$1
 
     if (( $is_hsmlite == 0 )); then
-		echo "No TEST_OTHER_PARAMETERS_4 for this purpose: skipped"
-		set_skipped
-		return 1
-	fi
+        echo "No TEST_OTHER_PARAMETERS_4 for this purpose: skipped"
+        set_skipped
+        return 1
+    fi
 
-	clean_logs
+    clean_logs
 
     # test initial condition: backend must not be mounted
     umount $BKROOT || umount -f $BKROOT
 
-	echo "Create Files ..."
+    echo "Create Files ..."
     for i in `seq 1 11` ; do
-    	dd if=/dev/zero of=$RH_ROOT/file.$i bs=1M count=10 >/dev/null 2>/dev/null || error "writing file.$i"
-	done
+        dd if=/dev/zero of=$RH_ROOT/file.$i bs=1M count=10 >/dev/null 2>/dev/null || error "writing file.$i"
+    done
 
-	echo "Migrate files (must fail)"
-	$RH -f $RBH_CFG_DIR/$config_file --scan --run=migration --target=all --once -l DEBUG -L rh_migr.log
+    echo "Migrate files (must fail)"
+    $RH -f $RBH_CFG_DIR/$config_file --scan --run=migration --target=all --once -l DEBUG -L rh_migr.log
     (( $is_lhsm > 0 )) && wait_done 60
 
-	nbError=0
-	count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
+    nbError=0
+    count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
     if (( $count != 0 )); then
         error "********** TEST FAILED (File System): $count files migrated, but 0 expected"
         ((nbError++))
@@ -10426,36 +11423,34 @@ function TEST_OTHER_PARAMETERS_4
 
     ensure_init_backend || error "Error initializing backend $BKROOT"
 
-    echo "Migrate files"
-	$RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_scan.log --once
-	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l DEBUG -L rh_migr.log  &
-	pid=$!
-    kill -9 $pid
+    echo "Migrate files (once)"
+    $RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_scan.log --once
+    $RH -f $RBH_CFG_DIR/$config_file --run="migration(target=all)" -l DEBUG -L rh_migr.log
 
-	nbError=0
-	count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
+    nbError=0
+    count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
     if (( $count != 0 )); then
         error "********** TEST FAILED (File System): $count files migrated, but 0 expected"
         ((nbError++))
     fi
 
-    echo "Migrate files"
-	$RH -f $RBH_CFG_DIR/$config_file --scan -l DEBUG -L rh_scan.log --once
-	$RH -f $RBH_CFG_DIR/$config_file --run=migration --target=all -l DEBUG -L rh_migr.log &
-	pid=$!
+    echo "Migrate files (daemon)"
+    $RH -f $RBH_CFG_DIR/$config_file --run=migration -l DEBUG -L rh_migr.log &
+    pid=$!
 
-	echo "sleep 30 seconds"
-	sleep 30
-    (( $is_lhsm > 0 )) && wait_done 60
+    # wait for runtime_interval
+    echo "sleep 11 seconds"
+    sleep 11
+        (( $is_lhsm > 0 )) && wait_done 60
 
-	nbError=0
-	count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
+    nbError=0
+    count=`find $BKROOT -type f  -not -name "*.lov" | wc -l`
     if (( $count != 10 )); then
         error "********** TEST FAILED (File System): $count files migrated, but 10 expected"
         ((nbError++))
     fi
 
-	if (($nbError == 0 )); then
+    if (($nbError == 0 )); then
         echo "OK: test successful"
     else
         error "********** TEST FAILED **********"
@@ -10621,6 +11616,11 @@ function runtest_118
 }
 runtest_118
 
+run_test 119 uid_gid_as_numbers uidgidnum.conf "Store UIDs and GIDs as numbers"
+run_test 120 posix_acmtime common.conf "Test for posix ctimes"
+run_test 121 db_schema_convert "" "Test DB schema conversion"
+run_test 122 random_names common.conf "Test random file names"
+run_test 123 test_acct_borderline acct.conf "yes" "Test borderline ACCT cases"
 
 #### policy matching tests  ####
 
@@ -10685,6 +11685,7 @@ run_test 229g  test_limits test_limits.conf trig_param "test limit on both trigg
 run_test 229h  test_limits test_limits.conf trig_run "test limit on both trigger and run"
 run_test 229i  test_limits test_limits.conf param_run "test limit on both param and run"
 run_test 230   test_checker test_checker.conf "policies based on 'checker' module"
+run_test 231   test_action_check OtherParameters_4.conf "check status of current actions"
 
 #### triggers ####
 
@@ -10737,7 +11738,9 @@ run_test 507a     recov_filters  test_recov.conf  dir    "FS recovery with dir f
 run_test 507b     recov_filters  test_recov2.conf  dir    "FS recovery with dir filter (archive_symlinks=FALSE)"
 run_test 508    test_tokudb "Test TokuDB compression"
 run_test 509    test_cfg_overflow "config options too long"
-run_test 510    test_rbh_find_printf test1.conf "Test rbh-find with -printf option"
+run_test 510    test_rbh_find_printf test_checker.conf "Test rbh-find with -printf option"
+run_test 511    archive_uuid1 test_uuid.conf "Test UUID presence while scanning"
+run_test 512    archive_uuid2 test_uuid.conf "Archive and undelete file with UUID using changelogs"
 
 #### Tests by Sogeti ####
 run_test 600a test_alerts alert.conf "file1" 0 "TEST_ALERT_PATH_NAME"
@@ -10782,8 +11785,13 @@ run_test 608 migration_file_ExtendedAttribut MigrationFile_ExtendedAttribut.conf
 
 run_test 609 trigger_purge_QUOTA_EXCEEDED TriggerPurge_QuotaExceeded.conf "TEST_TRIGGER_PURGE_QUOTA_EXCEEDED"
 run_test 610 trigger_purge_OST_QUOTA_EXCEEDED TriggerPurge_OstQuotaExceeded.conf "TEST_TRIGGER_PURGE_OST_QUOTA_EXCEEDED"
-run_test 611 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_UserQuotaExceeded.conf "user 'root'" "TEST_TRIGGER_PURGE_USER_QUOTA_EXCEEDED"
-run_test 612 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_GroupQuotaExceeded.conf "group 'root'" "TEST_TRIGGER_PURGE_GROUP_QUOTA_EXCEEDED"
+if [[ $RBH_NUM_UIDGID = "yes" ]]; then
+    run_test 611 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_UserQuotaExceeded.conf "user '0'" "TEST_TRIGGER_PURGE_USER_QUOTA_EXCEEDED"
+    run_test 612 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_GroupQuotaExceeded.conf "group '0'" "TEST_TRIGGER_PURGE_GROUP_QUOTA_EXCEEDED"
+else
+    run_test 611 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_UserQuotaExceeded.conf "user 'root'" "TEST_TRIGGER_PURGE_USER_QUOTA_EXCEEDED"
+    run_test 612 trigger_purge_USER_GROUP_QUOTA_EXCEEDED TriggerPurge_GroupQuotaExceeded.conf "group 'root'" "TEST_TRIGGER_PURGE_GROUP_QUOTA_EXCEEDED"
+fi
 
 run_test 613a test_purge PurgeStd_Path_Name.conf 0 7 "file.6;file.7;file.8" "--run=purge --target=all" "TEST_PURGE_STD_PATH_NAME"
 run_test 613b test_purge_tmp_fs_mgr PurgeStd_Type.conf 0 8 "link.1;link.2" "--run=purge --target=all" "TEST_PURGE_STD_TYPE"
@@ -10835,15 +11843,15 @@ if (( $junit )); then
 	tfinal=`date "+%s.%N"`
 	dur=`echo "($tfinal-$tinit)" | bc -l`
 	echo "total test duration: $dur sec"
-	junit_write_xml "$dur" $RC $(( $RC + $SUCCES ))
+	junit_write_xml "$dur" $RC $(( $RC + $SUCCESS ))
 	rm -f $TMPXML_PREFIX.stderr $TMPXML_PREFIX.stdout $TMPXML_PREFIX.tc
 fi
 
 rm -f $SUMMARY
 if (( $RC > 0 )); then
-	echo "$RC tests FAILED, $SUCCES successful, $SKIP skipped"
+	echo "$RC tests FAILED, $SUCCESS successful, $SKIP skipped"
 else
-	echo "All tests passed ($SUCCES successful, $SKIP skipped)"
+	echo "All tests passed ($SUCCESS successful, $SKIP skipped)"
 fi
 rm -f $TMPERR_FILE
 exit $RC

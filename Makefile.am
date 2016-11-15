@@ -57,27 +57,40 @@ mydist:
 	$(MAKE) dist-gzip
 
 rpms: robinhood.spec mydist
-	mkdir -p $(rpm_dir)/BUILD $(rpm_dir)/SPECS $(rpm_dir)/SRPMS \
-		$(rpm_dir)/RPMS
-	rpmbuild $(rpmbuild_opt) --define="_topdir $(rpm_dir)" \
-		--define="dbversion $(dbversion)" --define="_prefix $(prefix)" \
-        	--define="_sysconfdir @CONFDIR@" -ta $(distdir).tar.gz
+	mkdir -p $(rpm_dir)/BUILD \
+		 $(rpm_dir)/SPECS \
+		 $(rpm_dir)/SRPMS \
+		 $(rpm_dir)/RPMS
+	rpmbuild $(rpmbuild_opt) \
+		--define="_topdir $(rpm_dir)" \
+		--define="dbversion $(dbversion)" \
+		--define="_prefix $(prefix)" \
+		--define="_sysconfdir @CONFDIR@" \
+		-ta $(distdir).tar.gz
 
 rpm: robinhood.spec mydist
 	mkdir -p $(rpm_dir)/BUILD $(rpm_dir)/SPECS $(rpm_dir)/SRPMS \
 		$(rpm_dir)/RPMS
-	rpmbuild $(rpmbuild_opt) --define="_topdir $(rpm_dir)" \
-		--define="_prefix $(prefix)" --define="dbversion $(dbversion)" \
-        	--define="_sysconfdir @CONFDIR@"  --define="_prefix $(prefix)" \
+	rpmbuild $(rpmbuild_opt) \
+		--define="_topdir $(rpm_dir)" \
+		--define="_prefix $(prefix)" \
+		--define="dbversion $(dbversion)" \
+		--define="configure_flags @ac_configure_args@" \
+		--define="_sysconfdir @CONFDIR@"  \
+		--define="_prefix $(prefix)" \
 		-tb $(distdir).tar.gz
 
 srpm: robinhood.spec mydist
-	mkdir -p $(rpm_dir)/BUILD $(rpm_dir)/SPECS $(rpm_dir)/SRPMS \
-		$(rpm_dir)/RPMS
-	rpmbuild $(rpmbuild_opt) --define="_topdir $(rpm_dir)" \
-		--define="_prefix $(prefix)" \
-		--define="dbversion $(dbversion)" \
-        	--define="_sysconfdir @CONFDIR@" -ts $(distdir).tar.gz
+	mkdir -p $(rpm_dir)/BUILD \
+		 $(rpm_dir)/SPECS \
+		 $(rpm_dir)/SRPMS \
+		 $(rpm_dir)/RPMS
+	rpmbuild $(rpmbuild_opt) \
+		 --define="_topdir $(rpm_dir)" \
+		 --define="_prefix $(prefix)" \
+		 --define="dbversion $(dbversion)" \
+        	 --define="_sysconfdir @CONFDIR@" \
+		 -ts $(distdir).tar.gz
 
 cppcheck:
 	cppcheck -j12 -v --force --enable=all -I`pwd`/src/include \
@@ -91,7 +104,7 @@ mans:
 
 EXTRA_DIST= robinhood.spec robinhood.spec.in \
 	autogen.sh \
-	LICENSE.fr.txt LICENSE.en.txt README.tmp_fs_mgr README.Lustre_HSM \
+	LICENSE.fr.txt LICENSE.en.txt README \
 	doc/admin_guides \
 	doc/install_webgui.txt \
 	doc/templates/includes/*.inc \

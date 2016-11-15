@@ -5,7 +5,7 @@
 AC_PREREQ(2.59)
 
 AC_INIT( [robinhood], [3.0], [robinhood-support@lists.sourceforge.net])
-RELEASE="0.alpha2"
+RELEASE="1"
 
 AC_DEFINE_UNQUOTED(RELEASE, "$RELEASE", [release info])
 AC_SUBST(RELEASE)
@@ -22,6 +22,29 @@ AC_PREFIX_DEFAULT([/usr])
 
 AC_GNU_SOURCE
 
+
+AC_ARG_ENABLE([dist],
+              AC_HELP_STRING([--enable-dist], [Only configure enough for make dist]),
+              [],
+              [enable_dist="no"])
+
+AM_PROG_LEX
+AC_PATH_PROG(LEX_INST, $LEX)
+if test -z "$LEX_INST" -a "x$enable_dist" = xyes; then
+  AC_MSG_ERROR([lex/flex not found])
+fi
+
+AC_PROG_YACC
+AC_PATH_PROG(YACC_INST, $YACC)
+if test -z "$YACC_INST" -a "x$enable_dist" = xyes; then
+  AC_MSG_ERROR([yacc/bison not found])
+fi
+
+AS_IF([test "x$enable_dist" = xyes], [
+AC_OUTPUT
+exit
+])
+
 # required for automake 1.12 (since fedora 18)
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 
@@ -32,8 +55,6 @@ AC_PROG_CC
 m4_ifdef([AM_PROG_CC_C_O], [AM_PROG_CC_C_O])
 
 AC_C_INLINE
-AM_PROG_LEX
-AC_PROG_YACC
 
 # define everything necessary for accessing large files (64bits offset)
 AC_SYS_LARGEFILE
@@ -53,8 +74,14 @@ AC_CHECK_SIZEOF([pthread_t])
 
 AX_ENABLE_FLAG([strict], [Compile with -Wall -Werror], [-Wall -Werror])
 
+AC_CHECK_LIB(z, gzflush,
+  [LIBS="-lz $LIBS"
+   AC_DEFINE(HAVE_LIBZ, 1, [define if you have zlib])],
+  [AC_MSG_WARN([zlib is required])])
+
 PKG_CHECK_MODULES(GLIB2, [glib-2.0 >= 2.16])
 PKG_CHECK_MODULES(GTHREAD2, [gthread-2.0])
+
 CFLAGS="$CFLAGS $GLIB2_CFLAGS $GTHREAD2_CFLAGS"
 LDFLAGS="$LDFLAGS $GLIB2_LIBS $GTHREAD2_LIBS"
 
@@ -106,6 +133,9 @@ build_shook="OFF"
 AC_ARG_ENABLE([lustre], AS_HELP_STRING([--disable-lustre],
               [Disable all lustre specific features]),
               [support_lustre="$enableval"],[support_lustre="yes"])
+
+# default input option is --scan
+INPUT_OPT="--scan"
 
 # shook requires Lustre + FID support + shook library
 # hsm_lite requires Lustre + FID support
@@ -247,6 +277,8 @@ if test "x$support_lustre" = "xyes" ; then
                     #include <asm/types.h>
                     #include <lustre/lustre_user.h>
                 ])
+                # default option for sysconfig
+                INPUT_OPT="--readlog"
             fi
 
             if test "x$have_llapi_changelog_start" = "xyes" && \
@@ -296,6 +328,8 @@ if test "x$support_lustre" = "xyes" ; then
         if test "x$have_lustre_hsm" = "xyes"; then
             AC_DEFINE([_LUSTRE_HSM], [1], [Lustre/HSM feature is present])
             build_lhsm="ON"
+            # only needed for Lustre/HSM
+            PKG_CHECK_MODULES([LIBUUID], [uuid >= 2.17])
         fi
 
         # test if library is available for shook mode
@@ -324,6 +358,7 @@ else
 fi # end of Lustre support
 
 AC_SUBST(DV_CMD)
+AC_SUBST(INPUT_OPT)
 
 AC_CHECK_HEADERS([attr/xattr.h],[],[AC_MSG_ERROR([libattr-devel is not installed.])])
 
@@ -419,7 +454,7 @@ AC_SUBST(SBINDIR)
 AS_AC_EXPAND(LIBDIR, $libdir)
 AC_SUBST(LIBDIR)
 
-# for exporting to spec file
+# for exporting to Makefile.in
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile
@@ -449,8 +484,6 @@ AC_CONFIG_FILES([Makefile
          man/Makefile
          robinhood.spec
          doc/doxygen/doxygen.cfg])
-
-AC_CONFIG_SUBDIRS([src/CUnit])
 
 AC_OUTPUT
 

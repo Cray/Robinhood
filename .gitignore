@@ -1,6 +1,8 @@
 .deps
 .libs
+.dirstamp
 Makefile.in
+Makefile
 *.o
 *.lo
 *.la
@@ -10,7 +12,9 @@ Makefile.in
 *.gcda
 *.gcno
 *~
+\#*\#
 TAGS
+cscope.*
 
 /autotools/depcomp
 /autotools/install-sh
@@ -42,6 +46,8 @@ TAGS
 /scripts/Makefile
 /scripts/robinhood.init
 /scripts/robinhood.init.sles
+/scripts/robinhood.service
+/scripts/robinhood@.service
 /scripts/sysconfig_robinhood
 /scripts/ld.so.robinhood.conf
 /scripts/rbh_cksum.sh
@@ -88,6 +94,7 @@ TAGS
 /src/tools/read_lovea
 /src/tools/set_lovea
 /src/tools/ost_fids_remap
+/src/tools/lhsmtool_cmd
 /src/robinhood/rbh-du
 /src/robinhood/rbh-find
 /src/robinhood/rbh-report
@@ -96,6 +103,7 @@ TAGS
 /src/robinhood/robinhood
 /tests/lustre_fs/*.log
 /tests/posix_fs/*.log
+/tests/test_suite/create-random
 /TODO
 /src/include/db_schema.h
 /scripts/make_mans.sh

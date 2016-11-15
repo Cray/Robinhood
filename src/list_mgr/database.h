@@ -30,6 +30,7 @@
 #define ACCT_FIELD_COUNT    "count"
 #define ACCT_DEFAULT_OWNER  "unknown"
 #define ACCT_DEFAULT_GROUP  "unknown"
+#define SZRANGE_FUNC        "sz_range"
 #define ONE_PATH_FUNC       "one_path"
 #define THIS_PATH_FUNC      "this_path"
 
@@ -52,10 +53,6 @@ char * sz_field[SZ_PROFIL_COUNT] =
     ACCT_SIZE_PREFIX"32G",
     ACCT_SIZE_PREFIX"1T"
 };
-
-#define ACCT_SZ_VAL(_s) "FLOOR(LOG2("_s")/5)"
-
-
 
 extern lmgr_config_t lmgr_config;
 
@@ -129,16 +126,11 @@ int db_escape_string(db_conn_t *conn, char *str_out, size_t out_size, const char
 /* retrieve error message */
 char          *db_errmsg( db_conn_t * conn, char *errmsg, unsigned int buflen );
 
-/* check table fields */
-int            db_list_table_fields( db_conn_t * conn, const char *table,
-                                     char **outtab,
-                                     unsigned int outtabsize,
-                                     char *inbuffer, unsigned int inbuffersize );
-
-/** list table fields and their type */
-int db_list_table_types(db_conn_t * conn, const char *table,
-                        char **outtab, char **typetab,
-                        unsigned int outtabsize, char *inbuffer, unsigned int inbuffersize);
+/** list table fields, their type, and default value */
+int db_list_table_info(db_conn_t * conn, const char *table,
+                       char **field_tab, char **type_tab, char **default_tab,
+                       unsigned int outtabsize,
+                       char *inbuffer, unsigned int inbuffersize);
 
 /* id of the last inserted row */
 unsigned long long db_last_id( db_conn_t * conn );

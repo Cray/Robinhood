@@ -232,6 +232,7 @@ int listmgr_get_by_pk( lmgr_t * p_mgr, PK_ARG_T pk, attr_set_t * p_info )
     int             main_count  = 0,
                     annex_count = 0,
                     name_count  = 0;
+    attr_mask_t     gen = gen_fields(p_info->attr_mask);
 
     if (p_info == NULL)
         return 0;
@@ -246,12 +247,12 @@ int listmgr_get_by_pk( lmgr_t * p_mgr, PK_ARG_T pk, attr_set_t * p_info )
 
     /* don't get fields that are not in main, names, annex, stripe...
      * This allows the caller to set all bits 'on' to get everything.
+     * Note: this also clear generated fields. They will be restored after.
      */
     supported_bits_only(&p_info->attr_mask);
 
     /* get info from main table (if asked) */
-    main_count = attrmask2fieldlist(req, p_info->attr_mask, T_MAIN, false,
-                                    false, "", "");
+    main_count = attrmask2fieldlist(req, p_info->attr_mask, T_MAIN, "", "", 0);
     if (main_count < 0)
     {
         rc = -main_count;
@@ -264,8 +265,8 @@ int listmgr_get_by_pk( lmgr_t * p_mgr, PK_ARG_T pk, attr_set_t * p_info )
         g_string_append(from, MAIN_TABLE);
     }
 
-    annex_count = attrmask2fieldlist(req, p_info->attr_mask, T_ANNEX,
-                                     first_table != NULL, false, "", "");
+    annex_count = attrmask2fieldlist(req, p_info->attr_mask, T_ANNEX, "", "",
+                                     first_table != NULL ? AOF_LEADING_SEP : 0);
     if (annex_count < 0)
     {
         rc = -annex_count;
@@ -283,8 +284,8 @@ int listmgr_get_by_pk( lmgr_t * p_mgr, PK_ARG_T pk, attr_set_t * p_info )
         }
     }
 
-    name_count = attrmask2fieldlist(req, p_info->attr_mask, T_DNAMES,
-                                    first_table != NULL, false, "", "");
+    name_count = attrmask2fieldlist(req, p_info->attr_mask, T_DNAMES, "", "",
+                                    first_table != NULL ? AOF_LEADING_SEP : 0);
     if (name_count < 0)
     {
         rc = -name_count;
@@ -422,7 +423,9 @@ next_table:
         }
     }
 
-    /* compute generated fields if asked */
+    /* restore generated fields in attr mask */
+    p_info->attr_mask = attr_mask_or(&p_info->attr_mask, &gen);
+    /* generate them */
     generate_fields(p_info);
 
     /* update operation stats */
