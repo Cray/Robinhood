@@ -161,8 +161,10 @@ void list_manager_chmod_test(void)
     ATTR_MASK_SET(&changed_attrs, path_update);
     ATTR_MASK_SET(&changed_attrs, fullpath);
     ATTR_MASK_STATUS_SET(&changed_attrs, 0);
+    /* CASTOR-2003
     ATTR_MASK_SET(&changed_attrs, owner);
     ATTR_MASK_SET(&changed_attrs, gr_name);
+    */
     ATTR_MASK_SET(&changed_attrs, blocks);
     ATTR_MASK_SET(&changed_attrs, last_access);
     ATTR_MASK_SET(&changed_attrs, last_mod);
@@ -181,10 +183,12 @@ void list_manager_chmod_test(void)
                     ATTR(&results->attrs, path_update));
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, fullpath),
                            ATTR(&results->attrs, fullpath));
+    /* CASTOR-2003
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, owner),
                            ATTR(&results->upd_attrs, owner));
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, gr_name),
                            ATTR(&results->upd_attrs, gr_name));
+                           */
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, blocks),
                     ATTR(&results->upd_attrs, blocks));
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, last_access),
@@ -230,8 +234,10 @@ void list_manager_lhsm_archive_test(void)
     ATTR_MASK_SET(&changed_attrs, type);
     ATTR_MASK_SET(&changed_attrs, path_update);
     /* Not checking fullpath attribute: don't have it in results. */
+    /* CASTOR-2003
     ATTR_MASK_SET(&changed_attrs, owner);
     ATTR_MASK_SET(&changed_attrs, gr_name);
+    */
     ATTR_MASK_SET(&changed_attrs, blocks);
     ATTR_MASK_SET(&changed_attrs, last_access);
     ATTR_MASK_SET(&changed_attrs, last_mod);
@@ -255,10 +261,12 @@ void list_manager_lhsm_archive_test(void)
                            ATTR(&results->attrs, type));
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, path_update),
                     ATTR(&results->attrs, path_update));
+    /* CASTOR-2003
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, owner),
                            ATTR(&results->updated3_attrs, owner));
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, gr_name),
                            ATTR(&results->updated3_attrs, gr_name));
+                           */
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, blocks),
                     ATTR(&results->updated3_attrs, blocks));
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, last_access),
@@ -329,8 +337,10 @@ void list_manager_mkdir_test(void)
     ATTR_SET_INIT_ST(&changed_attrs);
     ATTR_MASK_SET(&changed_attrs, size);
     ATTR_MASK_SET(&changed_attrs, fullpath);
+    /* CASTOR-2003
     ATTR_MASK_SET(&changed_attrs, owner);
     ATTR_MASK_SET(&changed_attrs, gr_name);
+    */
     ATTR_MASK_SET(&changed_attrs, blocks);
     ATTR_MASK_SET(&changed_attrs, creation_time);
     ATTR_MASK_SET(&changed_attrs, last_access);
@@ -351,10 +361,12 @@ void list_manager_mkdir_test(void)
 
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, size),
                     ATTR(&results->ins_attrs, size));
+    /* CASTOR-2003
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, owner),
                            ATTR(&results->ins_attrs, owner));
     CU_ASSERT_STRING_EQUAL(ATTR(&changed_attrs, gr_name),
                            ATTR(&results->ins_attrs, gr_name));
+                           */
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, blocks),
                     ATTR(&results->ins_attrs, blocks));
     CU_ASSERT_EQUAL(ATTR(&changed_attrs, creation_time),
@@ -431,8 +443,10 @@ void * connfail_get_thr(void *arg)
 
         ATTR(attrs + i, size) = i;
         ATTR(attrs + 1, blocks) = i + 1;
+    /* CASTOR-2003
         strcpy(ATTR(attrs + i, owner), "root");
         strcpy(ATTR(attrs + i, gr_name), "root");
+        */
         ATTR(attrs + i, last_access) = i;
         ATTR(attrs + i, last_mod) = i + 1;
         strcpy(ATTR(attrs + i, type), "file");

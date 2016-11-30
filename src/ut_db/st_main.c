@@ -27,6 +27,13 @@
 
 #include "st_tests.h"
 
+/* For linker to find required global variable. */
+mod_cfg_funcs_t fs_scan_cfg_hdlr;
+mod_cfg_funcs_t updt_params_hdlr;
+mod_cfg_funcs_t policies_cfg_hdlr;
+mod_cfg_funcs_t policy_run_cfg_hdlr;
+mod_cfg_funcs_t entry_proc_cfg_hdlr;
+
 char *dump_file = NULL;
 char *config_file_name = NULL;
 extern size_t n_test_records;

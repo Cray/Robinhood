@@ -7,6 +7,17 @@ if ENABLE_UNIT_TESTS
 noinst_PROGRAMS=ut
 noinst_HEADERS=ut_test_suites.h
 
+all_libs = \
+	$(top_srcdir)/src/entry_processor/libentryproc.la \
+	$(top_srcdir)/src/policies/libpolicies.la \
+	$(top_srcdir)/src/cfg_parsing/librbhcfg.la \
+	$(top_srcdir)/src/chglog_reader/libchglog_rd.la \
+	$(top_srcdir)/src/fs_scan/libfsscan.la \
+	$(top_srcdir)/src/common/libcommontools.la \
+	$(top_srcdir)/src/list_mgr/liblistmgr.la \
+	$(top_srcdir)/src/CUnit/CUnit/Sources/libcunit.la \
+	$(top_srcdir)/src/cfg_parsing/libconfigparsing.la
+
 utdir=.
 ut_SOURCES=ut_main.c \
 	ut_changelog.c \
@@ -14,16 +25,7 @@ ut_SOURCES=ut_main.c \
 	ut_mysql_mock.c
 ut_HEADERS=ut_test_suites.h
 ut_CFLAGS=-iquote $(top_srcdir)/src/CUnit/CUnit/Headers $(AM_CFLAGS)
-ut_LDFLAGS=-rdynamic -ldl $(AM_LDFLAGS)
-ut_LDADD=$(top_srcdir)/src/CUnit/CUnit/Sources/libcunit.la \
-	$(top_srcdir)/src/chglog_reader/libchglog_rd.la \
-	$(top_srcdir)/src/entry_processor/libentryproc.la \
-	$(top_srcdir)/src/cfg_parsing/librbhcfg.la \
-	$(top_srcdir)/src/fs_scan/libfsscan.la \
-	$(top_srcdir)/src/list_mgr/liblistmgr.la \
-	$(top_srcdir)/src/policies/libpolicies.la \
-	$(top_srcdir)/src/cfg_parsing/libconfigparsing.la \
-	$(top_srcdir)/src/common/libcommontools.la
+ut_LDFLAGS=-rdynamic -ldl $(all_libs) $(DB_LDFLAGS) $(FS_LDFLAGS) $(PURPOSE_LDFLAGS) $(AM_LDFLAGS)
 endif
 
 

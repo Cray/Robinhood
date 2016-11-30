@@ -19,6 +19,14 @@
 #include "Basic.h"
 #include "ut_test_suites.h"
 
+#include "rbh_cfg.h"
+
+/* For linker to find required global variable. */
+mod_cfg_funcs_t fs_scan_cfg_hdlr;
+mod_cfg_funcs_t updt_params_hdlr;
+mod_cfg_funcs_t policies_cfg_hdlr;
+mod_cfg_funcs_t policy_run_cfg_hdlr;
+
 /**
  * Populate internal CUnit DB with test suites.
  */

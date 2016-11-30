@@ -323,8 +323,10 @@ int chmod_test(void *data, void **result)
     if (rc != 0)
         goto done;
 
+    /* CASTOR-2003
     ATTR_MASK_SET(&attr_sets->upd_attrs, owner);
     ATTR_MASK_SET(&attr_sets->upd_attrs, gr_name);
+    */
     ATTR_MASK_SET(&attr_sets->upd_attrs, blocks);
     ATTR_MASK_SET(&attr_sets->upd_attrs, last_access);
     ATTR_MASK_SET(&attr_sets->upd_attrs, last_mod);
@@ -334,8 +336,10 @@ int chmod_test(void *data, void **result)
     ATTR_MASK_SET(&attr_sets->upd_attrs, fileclass);
     ATTR_MASK_SET(&attr_sets->upd_attrs, class_update);
 
+    /* CASTOR-2003
     strcpy(ATTR(&attr_sets->upd_attrs, owner), "root");
     strcpy(ATTR(&attr_sets->upd_attrs, gr_name), "root");
+    */
     ATTR(&attr_sets->upd_attrs, blocks) = 10;
     ATTR(&attr_sets->upd_attrs, last_access) = time(NULL);
     ATTR(&attr_sets->upd_attrs, last_mod) = ATTR(&attr_sets->upd_attrs,
@@ -421,8 +425,10 @@ int lhsm_archive_test(void *data, void**result)
      * id='0x200000401:0x1:0x0'
      * \endcode
      */
+    /* CASTOR-2003
     ATTR_MASK_SET(&attr_sets->updated1_attrs, owner);
     ATTR_MASK_SET(&attr_sets->updated1_attrs, gr_name);
+    */
     ATTR_MASK_SET(&attr_sets->updated1_attrs, blocks);
     ATTR_MASK_SET(&attr_sets->updated1_attrs, last_access);
     ATTR_MASK_SET(&attr_sets->updated1_attrs, last_mod);
@@ -437,8 +443,10 @@ int lhsm_archive_test(void *data, void**result)
     ATTR_MASK_INFO_SET(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_RELEASE);
     ATTR_MASK_INFO_SET(&attr_sets->updated1_attrs, sm_lhsm, ATTR_NO_ARCHIVE);
 
+    /* CASTOR-2003
     strcpy(ATTR(&attr_sets->updated1_attrs, owner), "2000");
     strcpy(ATTR(&attr_sets->updated1_attrs, gr_name), "root");
+    */
     ATTR(&attr_sets->updated1_attrs, blocks) = 0;
     ATTR(&attr_sets->updated1_attrs, last_access) = time(NULL);
     ATTR(&attr_sets->updated1_attrs, last_mod) =
@@ -494,8 +502,10 @@ int lhsm_archive_test(void *data, void**result)
      * lhsm_archid=1, lhsm_norels=0, lhsm_noarch=0 WHERE
      * id='0x200000401:0x1:0x0'
      */
+    /* CASTOR-2003
     ATTR_MASK_SET(&attr_sets->updated2_attrs, owner);
     ATTR_MASK_SET(&attr_sets->updated2_attrs, gr_name);
+    */
     ATTR_MASK_SET(&attr_sets->updated2_attrs, blocks);
     ATTR_MASK_SET(&attr_sets->updated2_attrs, last_access);
     ATTR_MASK_SET(&attr_sets->updated2_attrs, last_mod);
@@ -509,8 +519,10 @@ int lhsm_archive_test(void *data, void**result)
     ATTR_MASK_INFO_SET(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_RELEASE);
     ATTR_MASK_INFO_SET(&attr_sets->updated2_attrs, sm_lhsm, ATTR_NO_ARCHIVE);
 
+    /* CASTOR-2003
     strcpy(ATTR(&attr_sets->updated2_attrs, owner), "2000");
     strcpy(ATTR(&attr_sets->updated2_attrs, gr_name), "root");
+    */
     ATTR(&attr_sets->updated2_attrs, blocks) = 0;
     ATTR(&attr_sets->updated2_attrs, last_access) = time(NULL);
     ATTR(&attr_sets->updated2_attrs, last_mod) =
@@ -559,8 +571,10 @@ int lhsm_archive_test(void *data, void**result)
      * nlink=1, md_update=1472812897, fileclass='++', class_update=1472812897,
      * lhsm_lstarc=1472812891 WHERE id='0x200000401:0x1:0x0'
      */
+    /* CASTOR-2003
     ATTR_MASK_SET(&attr_sets->updated3_attrs, owner);
     ATTR_MASK_SET(&attr_sets->updated3_attrs, gr_name);
+    */
     ATTR_MASK_SET(&attr_sets->updated3_attrs, blocks);
     ATTR_MASK_SET(&attr_sets->updated3_attrs, last_access);
     ATTR_MASK_SET(&attr_sets->updated3_attrs, last_mod);
@@ -572,8 +586,10 @@ int lhsm_archive_test(void *data, void**result)
     ATTR_MASK_SET(&attr_sets->updated3_attrs, class_update);
     ATTR_MASK_INFO_SET(&attr_sets->updated3_attrs, sm_lhsm, ATTR_LAST_ARCHIVE);
 
+    /* CASTOR-2003
     strcpy(ATTR(&attr_sets->updated3_attrs, owner), "2000");
     strcpy(ATTR(&attr_sets->updated3_attrs, gr_name), "root");
+    */
     ATTR(&attr_sets->updated3_attrs, blocks) = 0;
     ATTR(&attr_sets->updated3_attrs, last_access) = time(NULL);
     ATTR(&attr_sets->updated3_attrs, last_mod) =
@@ -715,8 +731,10 @@ int mkdir_test(void *data, void **result)
      * id=VALUES(id), parent_id=VALUES(parent_id), name=VALUES(name),
      * path_update=VALUES(path_update)
      */
+    /* CASTOR-2003
     ATTR_MASK_SET(&attr_sets->ins_attrs, owner);
     ATTR_MASK_SET(&attr_sets->ins_attrs, gr_name);
+    */
     ATTR_MASK_SET(&attr_sets->ins_attrs, size);
     ATTR_MASK_SET(&attr_sets->ins_attrs, blocks);
     ATTR_MASK_SET(&attr_sets->ins_attrs, creation_time);
@@ -732,8 +750,10 @@ int mkdir_test(void *data, void **result)
     ATTR_MASK_SET(&attr_sets->ins_attrs, name);
     ATTR_MASK_SET(&attr_sets->ins_attrs, path_update);
 
+    /* CASTOR-2003
     strcpy(ATTR(&attr_sets->ins_attrs, owner), "root");
     strcpy(ATTR(&attr_sets->ins_attrs, gr_name), "root");
+    */
     ATTR(&attr_sets->ins_attrs, size) = 24850;
     ATTR(&attr_sets->ins_attrs, blocks) = 1;
     ATTR(&attr_sets->ins_attrs, creation_time) = time(NULL);
