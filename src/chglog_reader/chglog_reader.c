@@ -31,6 +31,7 @@
 #include "global_config.h"
 #include "rbh_cfg_helpers.h"
 #include "chglog_reader.h"
+#include "chglog_postproc.h"
 
 #include <pthread.h>
 #include <errno.h>
@@ -357,143 +358,38 @@ static void set_name(CL_REC_TYPE *logrec, entry_proc_op_t *p_op)
     }
 }
 
-#define LUSTRE_FIDS_EQUAL(_fid1, _fid2) \
-    (  (_fid1).f_seq == (_fid2).f_seq   \
-    && (_fid1).f_oid == (_fid2).f_oid   \
-    && (_fid1).f_ver == (_fid2).f_ver)
-
-static void drop_operation(entry_proc_op_t *operation)
-{
-    DisplayLog(LVL_DEBUG, CHGLOG_TAG, "Dropping operation");
-    dump_record(LVL_DEBUG, operation->extra_info.log_record.mdt,
-                operation->extra_info.log_record.p_log_rec);
-    rh_list_del(&operation->list);
-    rh_list_del(&operation->id_hash_list);
-    EntryProcessor_Release(operation);
-}
-
-bool unlink_compact(struct rh_list_head *op_queue, unsigned int *op_queue_count)
-{
-    entry_proc_op_t *op;
-    entry_proc_op_t *tmp;
-    entry_proc_op_t *to_del;
-    CL_REC_TYPE     *rec;
-    CL_REC_TYPE     *td_rec;
-    bool             deleted = false;
-    bool             remove_unlink = false;
-
-    /* Lookup starting from the last operation in the slot. */
-    op = rh_list_last_entry(op_queue, entry_proc_op_t, list);
-    while (   !rh_list_empty(op_queue)
-           && op != rh_list_first_entry(op_queue, entry_proc_op_t, list)) {
-        if (op->extra_info_is_set == 0) {
-            op = rh_list_entry(op->list.prev, entry_proc_op_t, list);
-            continue;
-        }
-        rec = op->extra_info.log_record.p_log_rec;
-        if (   rec->cr_type != CL_UNLINK
-            && rec->cr_type != CL_RENAME
-            && rec->cr_type != CL_RMDIR) {
-            op = rh_list_entry(op->list.prev, entry_proc_op_t, list);
-            continue;
-        }
-
-        tmp = op;
-        if (   rec->cr_type == CL_UNLINK
-            && (rec->cr_flags & CLF_UNLINK_LAST) != 0) {
-            /* Remove all records before for same target FID, but this one. */
-            while (   tmp
-                   != rh_list_first_entry(op_queue, entry_proc_op_t, list)) {
-                to_del = rh_list_entry(tmp->list.prev, entry_proc_op_t, list);
-                td_rec = to_del->extra_info.log_record.p_log_rec;
-                if (!LUSTRE_FIDS_EQUAL(rec->cr_tfid, td_rec->cr_tfid)) {
-                    tmp = to_del;
-                } else {
-                    drop_operation(to_del);
-                    --*op_queue_count;
-                    deleted = true;
-                }
-            }
-        } else {
-            /* Remove records before for same tfid, pfid, and name. If removed
-             * CL_CREATE, CL_MKDIR, or CL_EXT (RNMTO), remove this too. */
-            while (   tmp
-                   != rh_list_first_entry(op_queue, entry_proc_op_t, list)) {
-                to_del = rh_list_entry(tmp->list.prev, entry_proc_op_t, list);
-                td_rec = to_del->extra_info.log_record.p_log_rec;
-                if (   !LUSTRE_FIDS_EQUAL(rec->cr_tfid, td_rec->cr_tfid)
-                    || !LUSTRE_FIDS_EQUAL(rec->cr_pfid, td_rec->cr_pfid)
-                    || strcmp(rh_get_cl_cr_name(rec),
-                              rh_get_cl_cr_name(td_rec)) != 0) {
-                    tmp = to_del;
-                    continue;
-                }
-
-                /* if create, remove unlink record too. If unlink followed
-                 * by corresponding CL_RENAME, remove it too.
-                 */
-                remove_unlink =    td_rec->cr_type == CL_CREATE
-                                || td_rec->cr_type == CL_HARDLINK
-                                || td_rec->cr_type == CL_SOFTLINK
-                                || td_rec->cr_type == CL_EXT
-                                || td_rec->cr_type == CL_MKDIR;
-                drop_operation(to_del);
-                --*op_queue_count;
-                deleted = true;
-
-                if (remove_unlink)
-                    break;
-            }
-        }
-        if (remove_unlink) {
-            /* Special processing: we'll move to previous operation as result of
-             * unlink record removal.
-             */
-            to_del = op;
-            if (op != rh_list_first_entry(op_queue, entry_proc_op_t, list))
-                op = rh_list_entry(op->list.prev, entry_proc_op_t, list);
-            drop_operation(to_del);
-            --*op_queue_count;
-            deleted = true;
-            remove_unlink = false;
-            continue;
-        }
-
-        if (!!rh_list_empty(op_queue))
-            break;
-        if (op != rh_list_first_entry(op_queue, entry_proc_op_t, list))
-            op = rh_list_entry(op->list.prev, entry_proc_op_t, list);
-    }
-
-    return deleted;
-}
-
-void compact_op_queue(reader_thr_info_t *p_info)
-{
-    if (!p_info->op_queue_updated || !!rh_list_empty(&p_info->op_queue))
-        return;
-
-    DisplayLog(LVL_FULL, CHGLOG_TAG, "before compacting operation queue");
-    dump_op_queue(p_info, LVL_FULL, -1);
-
-    unlink_compact(&p_info->op_queue, &p_info->op_queue_count);
-
-    DisplayLog(LVL_FULL, CHGLOG_TAG, "after compacting operation queue");
-    dump_op_queue(p_info, LVL_FULL, -1);
-
-    p_info->op_queue_updated = false;
-}
-
 /* Push the oldest (all=FALSE) or all (all=TRUE) entries into the pipeline. */
 static void process_op_queue(reader_thr_info_t *p_info, bool push_all)
 {
     time_t oldest = time(NULL) - cl_reader_config.queue_max_age;
     CL_REC_TYPE *rec;
+    unsigned int cpp_idx;
+    cpp_instance_t *cppi;
 
     DisplayLog(LVL_FULL, CHGLOG_TAG, "processing changelog queue");
 
-    if (cl_reader_config.compact_queue) {
-        compact_op_queue(p_info);
+    if (p_info->op_queue_updated && !rh_list_empty(&p_info->op_queue))
+    {
+        for (cpp_idx = 0; cpp_idx < cl_reader_config.cppi_count; ++cpp_idx)
+        {
+            cppi = cl_reader_config.cppi_def[cpp_idx];
+            if (cppi->enabled && cppi->cpp->action)
+            {
+
+                DisplayLog(LVL_FULL, CHGLOG_TAG, "before '%s' post-processor",
+                           cppi->name);
+                dump_op_queue(p_info, LVL_FULL, -1);
+
+                cppi->cpp->action(&p_info->op_queue, &p_info->op_queue_count,
+                                  cppi->cpp->instance_data);
+
+                DisplayLog(LVL_FULL, CHGLOG_TAG, "after '%s' post-processor",
+                           cppi->name);
+                dump_op_queue(p_info, LVL_FULL, -1);
+
+                p_info->op_queue_updated = false;
+            }
+        }
     }
 
     while(!rh_list_empty(&p_info->op_queue)) {

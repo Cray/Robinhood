@@ -26,6 +26,8 @@
 #include "Memory.h"
 #include "entry_processor.h"
 #include "rbh_logs.h"
+#include "chglog_postproc.h"
+#include "rbh_modules.h"
 
 #include <lustre/lustreapi.h>
 
@@ -401,7 +403,8 @@ UNIT_TEST(process_log_rec_unlink)
 }
 
 /** @{
- * The following test cases cover all functionality of @ref unlink_compact():
+ * The following test cases cover all functionality of
+ * @ref unlink_compact_wrapper():
  * Starting record | Final record
  * ----------------|-------------
  * CL_CREATE       | CL_UNLINK
@@ -482,6 +485,23 @@ int cl_rec_alloc_fill(CL_REC_TYPE **rec, struct changelog_record_descr *crd)
     return 0;
 }
 
+static bool unlink_compact_wrapper(struct rh_list_head *op_queue,
+                                   unsigned int *op_queue_count);
+static bool unlink_compact_wrapper(struct rh_list_head *op_queue,
+                                   unsigned int *op_queue_count)
+{
+    cpp_instance_t *cppi = cpp_by_name("collapse");
+
+    CU_ASSERT_FALSE(   cppi == NULL
+                    || cppi->cpp == NULL
+                    || cppi->cpp->action == NULL);
+    if (cppi == NULL || cppi->cpp == NULL || cppi->cpp->action == NULL)
+        return false;
+
+    return cppi->cpp->action(op_queue, op_queue_count,
+                             cppi->cpp->instance_data);
+}
+
 UNIT_TEST(unlink_compact_create_unlink_test)
 {
 #define N_TEST_RECORDS 3
@@ -514,7 +534,7 @@ UNIT_TEST(unlink_compact_create_unlink_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -574,7 +594,7 @@ UNIT_TEST(unlink_compact_create_unlink_final_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -625,7 +645,7 @@ UNIT_TEST(unlink_compact_create_rename_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -691,7 +711,7 @@ UNIT_TEST(unlink_compact_mkdir_rename_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -753,7 +773,7 @@ UNIT_TEST(unlink_compact_mkdir_rmdir_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -813,7 +833,7 @@ UNIT_TEST(unlink_compact_ext_unlink_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -876,7 +896,7 @@ UNIT_TEST(unlink_compact_ext_rmdir_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -940,7 +960,7 @@ UNIT_TEST(unlink_compact_ext_rename_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1006,7 +1026,7 @@ UNIT_TEST(unlink_compact_hardlink_unlink_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1072,7 +1092,7 @@ UNIT_TEST(unlink_compact_hardlink_unlink_final_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1135,7 +1155,7 @@ UNIT_TEST(unlink_compact_hardlink_rename_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1198,7 +1218,7 @@ UNIT_TEST(unlink_compact_softlink_unlink_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1264,7 +1284,7 @@ UNIT_TEST(unlink_compact_softlink_unlink_final_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1327,7 +1347,7 @@ UNIT_TEST(unlink_compact_softlink_rename_test)
     CU_ASSERT_EQUAL(thread_info.suppressed_records, 0);
     CU_ASSERT_EQUAL(thread_info.interesting_records, N_TEST_RECORDS);
 
-    CU_ASSERT_TRUE(unlink_compact(&thread_info.op_queue,
+    CU_ASSERT_TRUE(unlink_compact_wrapper(&thread_info.op_queue,
                                   &thread_info.op_queue_count));
 
     n_records = process_log_rec_record_count();
@@ -1370,6 +1390,7 @@ void changelog_test_fini(void)
     memset(&thread_info, 0, sizeof(thread_info));
 }
 
+int changelog_suite_init(void);
 int changelog_suite_init(void)
 {
     cl_reader_config.mdt_count = 1;
@@ -1379,13 +1400,20 @@ int changelog_suite_init(void)
 
     strcpy(cl_reader_config.mdt_def[0].mdt_name, "fake_mdt");
 
+    (void)create_cpp_instance("collapse");
+    if (cpp_by_name("collapse") == NULL)
+        return 1;
+
     return 0;
 }
 
+int changelog_suite_fini(void);
 int changelog_suite_fini(void)
 {
     MemFree(cl_reader_config.mdt_def);
     cl_reader_config.mdt_count = 0;
+
+    module_unload_all();
 
     return 0;
 }

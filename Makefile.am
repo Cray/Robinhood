@@ -104,7 +104,8 @@ EXTRA_DIST += src/CUnit/CUnit/Sources/Win \
 	src/CUnit/Man \
 	src/CUnit/Share
 
-TEST_COMMAND = ./src/ut/ut 2> /dev/null
+TEST_COMMAND = LD_LIBRARY_PATH=$(top_srcdir)/src/modules/.libs \
+	       ./src/ut/ut 2> /dev/null
 
 .PHONY: test
 test: __test

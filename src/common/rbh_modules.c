@@ -282,6 +282,7 @@ int module_unload_all(void)
     }
 
     free(mod_list);
+    mod_list = NULL;
     mod_count = 0;
 
     return rc_save;
@@ -355,4 +356,23 @@ action_scheduler_t *module_get_scheduler(const char *name)
         return NULL;
 
     return mod->mod_ops.mod_get_scheduler(name);
+}
+
+chglog_postproc_t *module_get_chglog_postproc(const char *name)
+{
+    rbh_module_t    *mod;
+    chglog_postproc_t *(*mod_get_changelog_postproc)(void) = NULL;
+    char *errstr;
+
+    mod = module_get(name);
+    if (mod == NULL)
+        return NULL;
+
+    mod_get_changelog_postproc = dlsym(mod->sym_hdl,
+                                       "mod_get_changelog_postproc");
+    errstr = dlerror();
+    if (errstr != NULL)
+        return NULL;
+
+    return mod_get_changelog_postproc();
 }

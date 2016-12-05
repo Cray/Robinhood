@@ -32,6 +32,7 @@
 #include "lustre_extended_types.h"
 #include <stdbool.h>
 #include "entry_proc_hash.h"
+#include "chglog_postproc.h"
 
 #define MDT_NAME_MAX  32
 #define READER_ID_MAX 16
@@ -50,6 +51,10 @@ typedef struct chglog_reader_config_t {
     mdt_def_t *mdt_def;
     unsigned int mdt_count;
 
+    /** List of post-processor instances */
+    cpp_instance_t **cppi_def;
+    unsigned int    cppi_count;
+
     /* nbr of changelog records to be agregated for llapi_changelog_clear() */
     int batch_ack_count;
 
@@ -66,9 +71,6 @@ typedef struct chglog_reader_config_t {
     /* Interval at which we have to check whether operation in the
      * internal queue have aged. */
     time_t queue_check_interval;
-
-    /** Enable changelog records compacting. */
-    bool compact_queue;
 
     /* Options suported by the MDS. LU-543 and LU-1331 are related to
      * events in changelog, where a rename is overriding a destination
