@@ -2509,7 +2509,7 @@ function test_acct_borderline
     [[ "${line_values[7]}" == 0 ]] || error "expected count for size0: 0"
     [[ "${line_values[9]}" == 0 ]] || error "expected count for size32-1K: 0"
     [[ "${line_values[12]}" == 1 ]] || error "expected count for size1M-32M: 1"
-    
+
     # change record group
     mysql $RH_DB -e "UPDATE ENTRIES SET gid='bar' WHERE id='id1'" || error "UPDATE ERROR"
     $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
@@ -2556,7 +2556,7 @@ function test_acct_borderline
     $REPORT -f $RBH_CFG_DIR/$config_file -u '*' -S --csv -q --szprof > rh_report.log || error "report error"
     [ "$DEBUG" = "1" ] && cat rh_report.log && echo "------"
 
-    # check records 
+    # check records
     line_values=($(grep "unknown,    unknown" rh_report.log | tr ',' ' '))
     [[ "${line_values[3]}" == 3 ]] || error "expected count: 3"
     [[ "${line_values[4]}" == 123 ]] || error "expected size: 123"
@@ -3964,7 +3964,7 @@ function test_checker
         error "scan error"
     check_db_error rh_scan.log
 
-    # if robinhood is not installed, use rbh_cksum.sh from script directory 
+    # if robinhood is not installed, use rbh_cksum.sh from script directory
     if [ -d "../../src/robinhood" ]; then
         export PATH="$PATH:../../scripts/"
     # else use the installed one
@@ -4449,16 +4449,16 @@ function test_trigger_check
 
 	nb_release=`grep "$REL_STR" rh_purge.log | wc -l`
 
-	count_trig=`grep " entries must be processed in Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	count_trig=`grep " entries must be purged in Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	[ -n "$count_trig" ] || count_trig=0
 
-	vol_fs_trig=`grep " blocks (x512) must be processed on Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	vol_fs_trig=`grep " blocks (x512) must be purged on Filesystem" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	((vol_fs_trig_mb=$vol_fs_trig/2048)) # /2048 == *512/1024/1024
 
-	vol_user_trig=`grep " blocks (x512) must be processed for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	vol_user_trig=`grep " blocks (x512) must be purged for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	((vol_user_trig_mb=$vol_user_trig/2048)) # /2048 == *512/1024/1024
 
-	cnt_user_trig=`grep " files to be processed for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
+	cnt_user_trig=`grep " files must be purged for user" rh_purge.log | cut -d '|' -f 2 | awk '{print $1}'`
 	[ -n "$cnt_user_trig" ] || cnt_user_trig=0
 
 	echo "triggers reported: $count_trig entries (global), $cnt_user_trig entries (user), $vol_fs_trig_mb MB (global), $vol_user_trig_mb MB (user)"
@@ -4750,8 +4750,8 @@ function test_info_collect
 	else
         [ "$DEBUG" = "1" ] && $LFS changelog lustre
 		echo "1-Reading changelogs..."
-		$RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
-		#$RH -f $RBH_CFG_DIR/$config_file --readlog -l FULL -L rh_chglogs.log  --once || error ""
+		#$RH -f $RBH_CFG_DIR/$config_file --readlog -l DEBUG -L rh_chglogs.log  --once || error ""
+		$RH -f $RBH_CFG_DIR/$config_file --readlog -l FULL -L rh_chglogs.log  --once || error ""
 		nb_cr=4
 	fi
 	check_db_error rh_chglogs.log
@@ -4891,8 +4891,6 @@ function test_info_collect2
 		scan_chk $config_file
         check_fcount 10000
         empty_fs
-        # sleep 1 to ensure md_update >= 1s
-        sleep 1
 		scan_chk $config_file
         check_fcount 0
 	elif (( $flavor == 2 )); then
@@ -4905,8 +4903,6 @@ function test_info_collect2
 		readlog_chk $config_file
         check_fcount 10000
         empty_fs
-        # sleep 1 to ensure md_update >= 1s
-        sleep 1
 		scan_chk    $config_file
         check_fcount 0
 	elif (( $flavor == 3 )); then
@@ -4919,8 +4915,6 @@ function test_info_collect2
 		scan_chk    $config_file
         check_fcount 10000
         empty_fs
-        # sleep 1 to ensure md_update >= 1s
-        sleep 1
 		scan_chk    $config_file
         check_fcount 0
 	elif (( $flavor == 4 )); then
@@ -4937,8 +4931,6 @@ function test_info_collect2
         diff_chk $config_file
         check_fcount 10000
         empty_fs
-        # sleep 1 to ensure md_update >= 1s
-        sleep 1
         diff_chk $config_file
         check_fcount 0
 	else

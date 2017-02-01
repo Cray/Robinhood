@@ -1,6 +1,12 @@
 AM_CFLAGS= $(CC_OPT) $(DB_CFLAGS) $(PURPOSE_CFLAGS) @LIBUUID_CFLAGS@
 
+include_HEADERS=mod_internal.h
+
 pkglib_LTLIBRARIES=
+
+pkglib_LTLIBRARIES+=librbhmodules.la
+librbhmodules_la_SOURCES=mod_internal.c mod_internal.h
+librbhmodules_la_LDFLAGS=-version-info 0:0:0
 
 pkglib_LTLIBRARIES+=librbh_mod_common.la
 librbh_mod_common_la_SOURCES=common.c mod_internal.c mod_internal.h
@@ -21,9 +27,10 @@ librbh_mod_lhsm_la_SOURCES=lhsm.c mod_internal.c mod_internal.h
 librbh_mod_lhsm_la_LDFLAGS=-version-info 0:0:0
 librbh_mod_lhsm_la_LIBADD=-llustreapi @LIBUUID_LIBS@
 
-pkglib_LTLIBRARIES+=librbh_mod_collapse.la
-librbh_mod_collapse_la_SOURCES=collapse.c mod_internal.h mod_internal.c
-librbh_mod_collapse_la_LDFLAGS=-version-info 0:0:0
+#pkglib_LTLIBRARIES+=librbh_mod_collapse.la
+#librbh_mod_collapse_la_SOURCES=collapse.c
+#librbh_mod_collapse_la_LIBADD=librbhmodules.la
+#librbh_mod_collapse_la_LDFLAGS=-version-info 0:0:0
 endif
 if HSM_LITE
 pkglib_LTLIBRARIES+=librbh_mod_backup.la
