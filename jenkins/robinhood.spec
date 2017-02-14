@@ -1,0 +1,488 @@
+#xyr build defines
+%define _xyr_package_name       robinhood
+%define _xyr_package_source     robinhood.tgz
+%define _xyr_package_version    1.0
+%define _xyr_build_number       1
+%define _xyr_pkg_url            http://es-gerrit.xyus.xyratex.com:8080/robinhood
+%define _xyr_svn_version        0
+#xyr end defines
+
+Name:       %_xyr_package_name
+Version:    %_xyr_package_version
+Release:    %_xyr_build_number
+Summary:    Robinhood - Policy engine and accounting tool for large filesystems
+
+Group:      Applications/System
+License:    CeCILL-C
+URL:        http://seagate.com
+Source0:    %_xyr_package_source
+BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+# You probably want to change this.
+ExclusiveArch:  x86_64
+
+# End Seagate meta information
+
+# default ON
+%bcond_without lustre
+%bcond_without lhsm
+%bcond_without mysql
+%bcond_without backup
+%bcond_without common_rpms
+
+#default OFF
+%bcond_with lustre
+
+%if %{with lustre}
+	%global lswitch --enable-lustre
+	# default ON
+	%bcond_without lhsm
+	%bcond_without backup
+%else
+	%global lswitch --disable-lustre
+	# default OFF
+	%bcond_with lhsm
+	%bcond_with backup
+%endif
+
+# default OFF
+%bcond_with shook
+%bcond_with recovtools
+
+%if ( 0%{?fedora} >= 18 || 0%{?rhel} >= 7 || 0%{?suse_version} >= 1210 )
+%global with_systemd 1
+%else
+%global with_systemd 0
+%endif
+
+# target install dir for web gui
+%define installdir_www  /var/www/html
+
+###### end of macro definitions #####
+
+# Name: robinhood
+# Version: 3.0
+
+Vendor: CEA, HPC department <http://www-hpc.cea.fr>
+Prefix: %{_prefix}
+
+%if %{with lustre}
+%if %{defined lversion}
+%define config_dependant .lustre_client%{lversion}
+%else
+%define config_dependant .lustre_client
+%endif
+%endif
+
+# Release: 0.alpha2%{?config_dependant}%{?dist}
+
+# Summary: Robinhood - Policy engine and reporting tool for large filesystems
+# License: CeCILL-C
+Group: Applications/System
+# Url: http://robinhood.sourceforge.net
+
+
+BuildRequires: glib2-devel >= 2.16
+BuildRequires: libattr-devel
+BuildRequires: mailx
+BuildRequires: automake
+BuildRequires: autoconf
+BuildRequires: libtool
+BuildRequires: autogen
+BuildRequires: libuuid-devel >= 2.17
+%if %{with lustre}
+BuildRequires:  lustre-client >= %{lversion}
+%endif
+%if %{with mysql}
+BuildRequires: /usr/include/mysql/mysql.h
+%endif
+
+%description
+Robinhood is a tool for monitoring and applying policies to file system entries.
+It is designed to process all its tasks in parallel, so it is particularly adapted
+for managing large file systems with millions of entries and petabytes of data.
+
+With support for: %{?with_lustre:Lustre} %{?with_backup:Backup} %{?with_shook:shook}
+
+
+%if %{with lustre}
+# Package robinhood-lustre includes robinhood for Lustre filesystem
+# which is not compatible with robinhood-posix.
+%package lustre
+
+Summary: Robinhood Policy Engine for Lustre filesystems
+Group: Applications/System
+Requires:  /usr/sbin/mount.lustre
+Conflicts: robinhood-posix
+Provides: robinhood = %{version}-%{release}
+Obsoletes: robinhood-tmpfs < 3.0, robinhood-tmpfs-lustre < 3.0
+Obsoletes: robinhood-backup < 3.0, robinhood-lhsm < 3.0
+
+%description lustre
+Policy engine for Lustre filesystems.
+
+%{?configure_flags:Generated using options: }%{?configure_flags}
+
+%else
+
+# Package robinhood-posix includes robinhood for other POSIX filesystems
+# It is not compatible with robinhood-lustre.
+%package posix
+
+Summary: Robinhood Policy engine for POSIX filesystems
+Group: Applications/System
+Conflicts: robinhood-lustre
+Provides: robinhood = %{version}-%{release}
+Obsoletes: robinhood-tmpfs < 3.0, robinhood-tmpfs-posix < 3.0
+
+%description posix
+Policy engine for POSIX filesystems.
+
+%{?configure_flags:Generated using options: }%{?configure_flags}
+
+%endif
+
+%if %{with common_rpms}
+%package adm
+Summary: admin/config helper for Robinhood PolicyEngine
+Group: Applications/System
+Release: %_xyr_build_number
+
+%description adm
+This RPM provides an admin/config helper for Robinhood PolicyEngine (command rbh-config).
+
+
+%package webgui
+Summary: Web interface to vizualize filesystems stats
+Group: Applications/System
+Release: %_xyr_build_number
+Requires: php, php-pdo, php-mysql
+
+%description webgui
+Web interface to vizualize filesystems stats.
+This uses robinhood database to display misc. user and group stats.
+
+
+%if %{with recovtools}
+%package recov-tools
+Summary: Tools for MDS recovery.
+Group: Applications/System
+
+%description recov-tools
+Tools for MDS recovery.
+%endif
+
+%package tests
+Summary: Test suite for Robinhood
+Group: Applications/System
+Requires: robinhood robinhood-adm bc
+# mariadb or mysql
+Requires: /usr/bin/mysql
+Release: %_xyr_build_number
+
+%description tests
+Lustre and Posix tests for Robinhood.
+
+%endif
+
+%if %{with lhsm} || %{with shook}
+%package tools
+Summary: Annex tools for robinhood.
+Group: Applications/System
+
+%description tools
+Annex tools for robinhood.
+%endif
+
+%package devel
+Summary: Robinhood include headers
+Group: Development/Applications
+Provides: robinhood-devel = %{version}
+Requires: %{name} = %{version}
+
+%description devel
+This package contains headers required to build robinhood extension plugins.
+
+%prep
+%setup -q -n %{name}
+
+%build
+./autogen.sh
+./configure  --disable-unit-tests %{lswitch} %{?configure_flags:configure_flags} \
+        --mandir=%{_mandir} \
+        --libdir=%{_libdir}
+make %{?_smp_mflags}
+
+%install
+rm -rf $RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT
+make install DESTDIR=$RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d
+
+%if %{with lhsm}
+install -m 644 doc/templates/includes/lhsm.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+%endif
+%if %{with backup}
+install -m 644 doc/templates/includes/backup.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+%endif
+install -m 644 doc/templates/includes/tmpfs.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/includes/alerts.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/includes/check.inc $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/includes/
+install -m 644 doc/templates/example.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+install -m 644 doc/templates/basic.conf $RPM_BUILD_ROOT/%{_sysconfdir}/robinhood.d/templates/
+
+mkdir $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig
+install -m 644 scripts/sysconfig_robinhood $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/robinhood
+
+install -m 644 scripts/ld.so.robinhood.conf $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+mkdir $RPM_BUILD_ROOT/%{_includedir}/robinhood
+mv $RPM_BUILD_ROOT/%{_includedir}/*.h $RPM_BUILD_ROOT/%{_includedir}/lustre \
+	$RPM_BUILD_ROOT/%{_includedir}/robinhood/
+
+%if %{with common_rpms}
+mkdir -p $RPM_BUILD_ROOT/%{installdir_www}/robinhood
+cp -r web_gui/gui_v3/* $RPM_BUILD_ROOT/%{installdir_www}/robinhood/.
+cp    web_gui/gui_v3/api/.htaccess $RPM_BUILD_ROOT/%{installdir_www}/robinhood/api/.
+mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/httpd/conf.d/
+install -m 644 web_gui/robinhood.conf $RPM_BUILD_ROOT/%{_sysconfdir}/httpd/conf.d/.
+%endif
+
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.a
+rm -f $RPM_BUILD_ROOT/%{_libdir}/robinhood/librbh_mod_*.la
+
+# Add an unmutable copy of the templates for the tests
+%if %{with common_rpms}
+mkdir -p $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+cp -a doc/templates $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
+%endif
+
+%if %{with_systemd}
+mkdir -p  $RPM_BUILD_ROOT/%{_unitdir}
+install -m 444 scripts/robinhood.service $RPM_BUILD_ROOT/%{_unitdir}/robinhood.service
+install -m 444 scripts/robinhood@.service $RPM_BUILD_ROOT/%{_unitdir}/robinhood@.service
+
+%if %{with lustre}
+%post lustre
+%else
+%post posix
+%endif
+/sbin/ldconfig
+%if %{defined suse_version}
+%service_add_post robinhood.service robinhood@.service
+%else
+%systemd_post robinhood.service
+%systemd_post robinhood@.service
+%endif
+
+%if %{with lustre}
+%preun lustre
+%else
+%preun posix
+%endif
+%if %{defined suse_version}
+%service_del_preun robinhood.service robinhood@.service
+%else
+%systemd_preun robinhood.service
+%systemd_preun robinhood@.service
+%endif
+
+
+%else # with_systemd
+mkdir -p $RPM_BUILD_ROOT/%{_initrddir}
+
+%if %{defined suse_version}
+install -m 755 scripts/robinhood.init.sles $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%else
+install -m 755 scripts/robinhood.init $RPM_BUILD_ROOT/%{_initrddir}/robinhood
+%endif
+
+%if %{with lustre}
+%post lustre
+%else
+%post posix
+%endif
+/sbin/ldconfig
+if [ -x %{_initrddir}/robinhood ]; then
+  if %{_initrddir}/robinhood status | grep running | grep -v "not running"  >/dev/null 2>&1; then
+    %{_initrddir}/robinhood stop
+    WASRUNNING=1
+  fi
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+  [ -x /sbin/chkconfig ] && /sbin/chkconfig --add robinhood
+  if test x$WASRUNNING = x1; then
+    %{_initrddir}/robinhood start
+  fi
+fi
+
+%if %{with lustre}
+%preun lustre
+%else
+%preun posix
+%endif
+
+if [ "$1" = 0 ]; then
+  if [ -x %{_initrddir}/robinhood ]; then
+     [ -x /sbin/chkconfig ] && /sbin/chkconfig --del robinhood
+    if %{_initrddir}/robinhood status | grep running | grep -v "not running" >/dev/null 2>&1; then
+      %{_initrddir}/robinhood stop
+    fi
+  fi
+fi
+%endif # with_systemd
+
+%if %{with lustre}
+%postun lustre
+%else
+%postun posix
+%endif
+/sbin/ldconfig
+
+%if %{with_systemd}
+%if %{defined suse_version}
+%service_del_postun robinhood.service robinhood@.service
+%else
+%systemd_postun
+%endif
+%endif
+
+%if %{with_systemd}
+%if %{defined suse_version}
+%if %{with lustre}
+%pre lustre
+%else
+%pre posix
+%endif
+%service_add_pre robinhood.service robinhood@.service
+%endif
+%endif
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%if %{with common_rpms}
+
+%files adm
+%{_sbindir}/rbh-config
+
+%if %{with recovtools}
+%files recov-tools
+%{_sbindir}/*lovea
+%{_sbindir}/gen_lov_objid
+%{_sbindir}/ost_fids_remap
+%endif
+
+%files webgui
+
+# set apache permissions
+%defattr(640, root, apache, 750)
+%{installdir_www}/robinhood
+%config(noreplace) %{_sysconfdir}/httpd/conf.d/robinhood.conf
+
+
+%files tests
+%defattr(-,root,root,-)
+%dir %{_datadir}/robinhood/
+%{_datadir}/robinhood/tests/
+%{_datadir}/robinhood/doc/
+
+%endif
+
+%files devel
+%{_libdir}/robinhood/*.a
+%{_libdir}/robinhood/*.la
+%{_includedir}/robinhood/*
+
+
+# robinhood RPM name for lustre is robinhood-lustre
+%if %{with lustre}
+%files lustre
+%else
+# robinhood RPM name for posix is robinhood-posix
+%files posix
+%endif
+
+%defattr(-,root,root,-)
+%doc README
+%doc COPYING
+%doc ChangeLog
+
+# everythink in sbin, except rbh-config which is in adm
+%if %{with shook}
+%exclude %{_sbindir}/rbh-rebind
+%{_sbindir}/rbh-import
+%{_sbindir}/rbh-recov
+%endif
+
+%if %{with backup}
+# NOT ADAPTED TO v3 YET
+#%{_sbindir}/rbh-import
+#%{_sbindir}/rbh-recov
+#%{_sbindir}/rbh-rebind
+%{_sbindir}/rbhext_*
+%endif
+
+%{_sbindir}/robinhood
+%{_sbindir}/rbh-report
+%{_sbindir}/rbh-diff
+%{_sbindir}/rbh-undelete
+%{_sbindir}/rbh_cksum.sh
+%{_bindir}/rbh-du
+%{_bindir}/rbh-find
+
+%{_libdir}/robinhood/librbh_mod_*.so*
+%{_libdir}/robinhood/librbhmodules.so*
+
+%{_mandir}/man1/*
+
+%config(noreplace) %{_sysconfdir}/sysconfig/robinhood
+
+%dir %{_sysconfdir}/robinhood.d
+%dir %{_sysconfdir}/robinhood.d/includes
+%dir %{_sysconfdir}/robinhood.d/templates
+
+%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+%if %{with lhsm}
+%config %{_sysconfdir}/robinhood.d/includes/lhsm.inc
+%endif
+%if %{with backup}
+%config %{_sysconfdir}/robinhood.d/includes/backup.inc
+%endif
+%config %{_sysconfdir}/robinhood.d/includes/tmpfs.inc
+%config %{_sysconfdir}/robinhood.d/includes/alerts.inc
+%config %{_sysconfdir}/robinhood.d/includes/check.inc
+%config %{_sysconfdir}/robinhood.d/templates/example.conf
+%config %{_sysconfdir}/robinhood.d/templates/basic.conf
+
+%if %{with_systemd}
+%{_unitdir}/robinhood.service
+%{_unitdir}/robinhood@.service
+%else
+%{_initrddir}/robinhood
+%endif
+
+%if %{with lhsm} || %{with shook}
+%files tools
+%if %{with lhsm}
+%{_sbindir}/lhsmtool_cmd
+%endif
+%if %{with shook}
+%{_sbindir}/rbh-rebind
+%endif
+%endif
+
+%changelog
+
+* Fri Sep 16 2016 Thomas Leibovici <thomas.leibovici@cea.fr> 3.0-1
+- Final Robinhood 3.0 release
+
+* Thu Jul 07 2016 Thomas Leibovici <thomas.leibovici@cea.fr> 3.0-0.rc1
+- Robinhood v3 rc1
+
+* Fri Mar 25 2016 Thomas Leibovici <thomas.leibovici@cea.fr> 3.0-0.alpha2
+- Robinhood v3 alpha2
+
+* Wed Dec 16 2015 Thomas Leibovici <thomas.leibovici@cea.fr> 3.0-0.alpha1
+- Robinhood v3 alpha1

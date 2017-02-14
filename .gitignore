@@ -15,6 +15,7 @@ Makefile
 \#*\#
 TAGS
 cscope.*
+build_failed
 
 /autotools/depcomp
 /autotools/install-sh
