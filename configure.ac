@@ -6,7 +6,6 @@ AC_PREREQ(2.59)
 
 AC_INIT( [robinhood], [3.0], [robinhood-support@lists.sourceforge.net])
 RELEASE="1"
-
 AC_DEFINE_UNQUOTED(RELEASE, "$RELEASE", [release info])
 AC_SUBST(RELEASE)
 
@@ -21,35 +20,6 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AC_PREFIX_DEFAULT([/usr])
 
 AC_GNU_SOURCE
-
-AC_CONFIG_FILES([Makefile
-         src/Makefile
-         src/include/Makefile
-         src/common/Makefile
-         src/cfg_parsing/Makefile
-         src/list_mgr/Makefile
-         src/entry_processor/Makefile
-         src/fs_scan/Makefile
-         src/chglog_reader/Makefile
-         src/modules/Makefile
-         src/policies/Makefile
-         src/robinhood/Makefile
-         src/tools/Makefile
-         src/tests/Makefile
-         scripts/Makefile
-         scripts/robinhood.init
-         scripts/robinhood.init.sles
-         scripts/robinhood.service
-         scripts/robinhood@.service
-         scripts/sysconfig_robinhood
-         scripts/ld.so.robinhood.conf
-         scripts/rbh_cksum.sh
-         tests/Makefile
-         tests/test_suite/Makefile
-         web_gui/Makefile
-         man/Makefile
-         robinhood.spec
-         doc/doxygen/doxygen.cfg])
 
 AC_ARG_ENABLE([dist],
               AC_HELP_STRING([--enable-dist], [Only configure enough for make dist]),
@@ -117,6 +87,8 @@ LDFLAGS="$LDFLAGS $GLIB2_LIBS $GTHREAD2_LIBS"
 AX_ENABLE_FLAG([debug-db], [enables debug traces for database operations], [-D_DEBUG_DB])
 AX_ENABLE_FLAG([debug-parsing], [enables debug traces for configuration file parsing], [-D_DEBUG_PARSING])
 AM_CONDITIONAL(DEBUG_PARSING, test "x$enable_debug_parsing" == "xyes" )
+AX_ENABLE_FLAG([debug], [enables build with debug info], [-g -O0])
+AM_CONDITIONAL(DEBUG_BUILD, test "x$enable_debug" == "xyes" )
 
 AX_ENABLE_FLAG([debug-pipeline], [enables debug traces for entry processor pipeline], [-D_DEBUG_ENTRYPROC])
 AX_ENABLE_FLAG([debug-policies], [enables debug traces for entry processor pipeline], [-D_DEBUG_POLICIES])
@@ -128,6 +100,10 @@ AX_ENABLE_FLAG([bench-pipeline], [test only: build special version for pipeline 
 AX_ENABLE_FLAG([gprof], [test only: add gprof info to the binaries], [-g -pg])
 AX_ENABLE_FLAG([gcov], [test only: add gcov info to the binaries], [--coverage])
 AX_VALGRIND_CHECK
+
+# unit tests flag
+AX_ENABLE_FLAG( [unit-tests], [enables unit tests], [-DUNIT_TESTS] )
+AM_CONDITIONAL(ENABLE_UNIT_TESTS, test "x$enable_unit_tests" == "xyes" )
 
 # behavior flags
 AX_DISABLE_FLAG([atfunc], [Don't use 'at' functions for scanning], [-D_NO_AT_FUNC])
@@ -147,9 +123,9 @@ AC_ARG_ENABLE([common-rpms], AS_HELP_STRING([--disable-common-rpms],
               [common_rpms="$enableval"],[common_rpms="yes"])
 AM_CONDITIONAL(COMMON_RPMS,test  "x$common_rpms" = "xyes")
 
-build_lustre="OFF"
-build_backup="OFF"
-build_lhsm="OFF"
+build_lustre="ON"
+build_backup="ON"
+build_lhsm="ON"
 build_shook="OFF"
 
 AC_ARG_ENABLE([lustre], AS_HELP_STRING([--disable-lustre],
@@ -453,12 +429,14 @@ AC_TYPE_SIZE_T
 
 # Check if getmntent_r exists
 AC_CHECK_FUNC([getmntent_r],[getmntent_r=yes],[getmntent_r=no])
-test "$getmntent_r" = "yes" && AC_DEFINE(HAVE_GETMNTENT_R, 1, [Reentrant version of getmntent exists])
+test "$getmntent_r" = "yes" && \
+    AC_DEFINE(HAVE_GETMNTENT_R, 1, [Reentrant version of getmntent exists])
 AM_CONDITIONAL(MNTENTCOMPAT, test "$getmntent_r" = "no" )
 
 # Check if fallocate(2) exists.
 AC_CHECK_FUNC([fallocate],[fallocate=yes],[fallocate=no])
-test "$fallocate" = "yes" && AC_DEFINE(HAVE_FALLOCATE, 1, [File preallocation available])
+test "$fallocate" = "yes" && \
+    AC_DEFINE(HAVE_FALLOCATE, 1, [File preallocation available])
 
 AS_AC_EXPAND(CONFDIR, $sysconfdir)
 if test $prefix = NONE && test "$CONFDIR" = "/usr/etc"  ; then
@@ -476,6 +454,38 @@ AC_SUBST(LIBDIR)
 
 # for exporting to Makefile.in
 AC_SUBST(ac_configure_args)
+
+AC_CONFIG_FILES([Makefile
+         src/Makefile
+         src/include/Makefile
+         src/common/Makefile
+         src/cfg_parsing/Makefile
+         src/list_mgr/Makefile
+         src/entry_processor/Makefile
+         src/fs_scan/Makefile
+         src/chglog_reader/Makefile
+         src/modules/Makefile
+         src/policies/Makefile
+         src/robinhood/Makefile
+         src/tools/Makefile
+         src/tests/Makefile
+         src/ut/Makefile
+         scripts/Makefile
+         scripts/robinhood.init
+         scripts/robinhood.init.sles
+         scripts/robinhood.service
+         scripts/robinhood@.service
+         scripts/sysconfig_robinhood
+         scripts/ld.so.robinhood.conf
+         scripts/rbh_cksum.sh
+         tests/Makefile
+         tests/test_suite/Makefile
+         web_gui/Makefile
+         man/Makefile
+         robinhood.spec
+         doc/doxygen/doxygen.cfg])
+
+AC_CONFIG_SUBDIRS([src/CUnit])
 
 AC_OUTPUT
 
