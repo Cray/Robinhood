@@ -26,6 +26,8 @@
 #include "xplatform_print.h"
 #include <stdio.h>
 
+volatile bool lmgr_cancel_retry = false;
+
 void printdbtype(db_conn_t *pconn, GString *str, db_type_e type,
                  const db_type_u *value_ptr)
 {
@@ -2064,7 +2066,8 @@ out_free:
 
 
 /** manage delayed retry of retryable errors
- * \return != 0 if the transaction must be restarted
+ * \return 1 if the transaction must be restarted
+ * \return 2 if transaction must be cancelled
  */
 int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
 {
@@ -2097,6 +2100,10 @@ int _lmgr_delayed_retry(lmgr_t *lmgr, int errcode, const char *func, int line)
         }
         return 0;
     }
+
+    /* Got TERM signal, must stop transactions and exit. */
+    if (lmgr_cancel_retry)
+        return 2;
 
     /* transaction is about to be restarted,
      * sleep for a given time */

@@ -44,6 +44,7 @@ cscope.*
 /robinhood.spec
 /rpms/
 /scripts/Makefile
+/scripts/ld.so.robinhood.conf
 /scripts/robinhood.init
 /scripts/robinhood.init.sles
 /scripts/robinhood.service
@@ -65,6 +66,8 @@ cscope.*
 /src/include/stamp-h1
 /src/list_mgr/Makefile
 /src/logs/Makefile
+/src/modules/Makefile
+/src/policies/Makefile
 /src/policy_matching/Makefile
 /src/policy_modules/Makefile
 /src/policy_modules/hsm_remove/Makefile
