@@ -296,8 +296,8 @@ static void dump_record(int debug_level, const char *mdt, const CL_REC_TYPE *rec
             len = snprintf(curr, left, " "CL_EXT_FORMAT,
                            PFID(&rec->cr_sfid),
                            PFID(&rec->cr_spfid),
-                           changelog_rec_snamelen((CL_REC_TYPE *)rec),
-                           changelog_rec_sname((CL_REC_TYPE *)rec));
+                           (int)changelog_rec_snamelen(rec),
+                           changelog_rec_sname(rec));
             curr += len;
             left -= len;
         }

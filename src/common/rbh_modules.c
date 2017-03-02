@@ -25,6 +25,7 @@
 #include "rbh_modules.h"
 #include "global_config.h"
 #include "rbh_logs.h"
+#include "rbh_misc.h"
 
 #include <ctype.h>
 #include <dlfcn.h>
@@ -267,6 +268,7 @@ int module_unload_all(void)
     }
 
     free(mod_list);
+    mod_list = NULL;
     mod_count = 0;
 
     return rc_save;

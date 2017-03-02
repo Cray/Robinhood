@@ -50,9 +50,9 @@ Prefix: %{_prefix}
 
 %if %{with lustre}
 %if %{defined lversion}
-%define config_dependant .lustre%{lversion}
+%define config_dependant .lustre_client%{lversion}
 %else
-%define config_dependant .lustre
+%define config_dependant .lustre_client
 %endif
 %endif
 
@@ -191,6 +191,15 @@ Group: Applications/System
 Annex tools for robinhood.
 %endif
 
+%package devel
+Summary: Robinhood include headers
+Group: Development/Applications
+Provides: robinhood-devel = %{version}
+Requires: %{name} = %{version}
+
+%description devel
+This package contains headers required to build robinhood extension plugins.
+
 %prep
 %setup -q -n @PACKAGE@-%{version}
 
@@ -224,6 +233,10 @@ mkdir $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig
 install -m 644 scripts/sysconfig_robinhood $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/robinhood
 
 install -m 644 scripts/ld.so.robinhood.conf $RPM_BUILD_ROOT/%{_sysconfdir}/ld.so.conf.d/robinhood.conf
+
+mkdir $RPM_BUILD_ROOT/%{_includedir}/robinhood
+mv $RPM_BUILD_ROOT/%{_includedir}/*.h $RPM_BUILD_ROOT/%{_includedir}/lustre \
+	$RPM_BUILD_ROOT/%{_includedir}/robinhood/
 
 %if %{with common_rpms}
 mkdir -p $RPM_BUILD_ROOT/%{installdir_www}/robinhood
@@ -373,6 +386,12 @@ rm -rf $RPM_BUILD_ROOT
 
 %endif
 
+%files devel
+%{_libdir}/robinhood/*.a
+%{_libdir}/robinhood/*.la
+%{_includedir}/robinhood/*
+
+
 # robinhood RPM name for lustre is robinhood-lustre
 %if %{with lustre}
 %files lustre
@@ -410,6 +429,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/rbh-find
 
 %{_libdir}/robinhood/librbh_mod_*.so*
+%{_libdir}/robinhood/librbhmodules.so*
 
 %{_mandir}/man1/*
 

@@ -1,6 +1,12 @@
 AM_CFLAGS= $(CC_OPT) $(DB_CFLAGS) $(PURPOSE_CFLAGS) @LIBUUID_CFLAGS@
 
+include_HEADERS=mod_internal.h
+
 pkglib_LTLIBRARIES=
+
+pkglib_LTLIBRARIES+=librbhmodules.la
+librbhmodules_la_SOURCES=mod_internal.c mod_internal.h
+librbhmodules_la_LDFLAGS=-version-info 0:0:0
 
 pkglib_LTLIBRARIES+=librbh_mod_common.la
 librbh_mod_common_la_SOURCES=common.c mod_internal.c mod_internal.h
