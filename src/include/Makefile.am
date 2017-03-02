@@ -13,7 +13,7 @@ include_HEADERS=db_types.h  list_mgr.h RW_Lock.h uidgidcache.h Memory.h \
 		lustre_extended_types.h policy_rules.h queue.h \
 		entry_proc_hash.h list.h update_params.h db_schema.h \
 		pipeline_types.h rbh_params.h rbh_types.h rbh_boolexpr.h \
-		rbh_cfg_helpers.h rbh_modules.h rbh_basename.h
+		rbh_cfg_helpers.h rbh_modules.h rbh_basename.h chglog_postproc.h
 
 nobase_include_HEADERS=lustre/lustre_errno.h
 

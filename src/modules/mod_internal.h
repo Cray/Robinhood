@@ -129,4 +129,6 @@ const char *mod_get_name(void);
 status_manager_t *mod_get_status_manager(void);
 
 action_func_t mod_get_action_by_name(const char *action_name);
+
+chglog_postproc_t *mod_get_changelog_postproc(void);
 #endif

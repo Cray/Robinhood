@@ -21,6 +21,7 @@ all_libs = \
 utdir=.
 ut_SOURCES=ut_main.c \
 	ut_changelog.c \
+	ut_chglog_postproc.c \
 	ut_lustre_mock.c \
 	ut_mysql_mock.c
 ut_HEADERS=ut_test_suites.h

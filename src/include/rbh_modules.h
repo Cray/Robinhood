@@ -23,14 +23,15 @@
 
 #include "policy_rules.h"
 #include "status_manager.h"
+#include "chglog_postproc.h"
 
 
 /**
  * Operations exposed by robinhood dynamic modules. These should be invoked
  * using the static inline wrappers defined below.
  *
- * None of these operations is considered optionnal and valid modules should
- * export all of them.
+ * 'mod_get_name' and 'mod_get_version' are mandatory.
+ * Other operations are optional.
  */
 struct rbh_module_operations {
     const char         *(*mod_get_name)(void);
@@ -55,6 +56,17 @@ typedef struct rbh_module {
  * \return The status manager or NULL on error
  */
 status_manager_t *module_get_status_manager(const char *name);
+
+/**
+ * Get the changelog post-processor associated to a robinhood dynamic module.
+ * This function will dlopen() the appropriate module if necessary. The library
+ * handle will then remain cached until module_unload_all() is called.
+ *
+ * \param[in] name Module name from which to acquire the SM.
+ *
+ * \return The changelog post-processor or NULL on error.
+ */
+chglog_postproc_t *module_get_chglog_postproc(const char *name);
 
 /**
  * Get an action function from a robinhood dynamic module. Actions function

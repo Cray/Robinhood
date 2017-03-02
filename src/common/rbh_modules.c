@@ -334,3 +334,21 @@ status_manager_t *module_get_status_manager(const char *name)
     return mod->mod_ops.mod_get_status_manager();
 }
 
+chglog_postproc_t *module_get_chglog_postproc(const char *name)
+{
+    rbh_module_t    *mod;
+    chglog_postproc_t *(*mod_get_changelog_postproc)(void) = NULL;
+    char *errstr;
+
+    mod = module_get(name);
+    if (mod == NULL)
+        return NULL;
+
+    mod_get_changelog_postproc = dlsym(mod->sym_hdl,
+                                       "mod_get_changelog_postproc");
+    errstr = dlerror();
+    if (errstr != NULL)
+        return NULL;
+
+    return mod_get_changelog_postproc();
+}
