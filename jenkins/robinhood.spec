@@ -250,6 +250,7 @@ cp -a doc/templates $RPM_BUILD_ROOT/%{_datadir}/robinhood/doc
 mkdir -p  $RPM_BUILD_ROOT/%{_unitdir}
 install -m 444 scripts/robinhood.service $RPM_BUILD_ROOT/%{_unitdir}/robinhood.service
 install -m 444 scripts/robinhood@.service $RPM_BUILD_ROOT/%{_unitdir}/robinhood@.service
+echo "Unit directory is '${_unitdir}'"
 
 %if %{with lustre}
 %post lustre
@@ -438,10 +439,10 @@ rm -rf $RPM_BUILD_ROOT
 %config %{_sysconfdir}/robinhood.d/templates/basic.conf
 
 %if %{with_systemd}
-%{_unitdir}/robinhood.service
-%{_unitdir}/robinhood@.service
+/%{_unitdir}/robinhood.service
+/%{_unitdir}/robinhood@.service
 %else
-%{_initrddir}/robinhood
+/%{_initrddir}/robinhood
 %endif
 
 %if %{with lhsm} || %{with shook}
