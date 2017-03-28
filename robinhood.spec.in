@@ -206,7 +206,8 @@ This package contains the headers required to build robinhood extension plugins.
 
 
 %build
-./configure %{lswitch} %{?configure_flags} --mandir=%{_mandir} --libdir=%{_libdir}
+./configure %{lswitch} %{?configure_flags} --mandir=%{_mandir} \
+--libdir=%{_libdir} --disable-unit-tests --disable-debug
 make %{?_smp_mflags}
 
 %install

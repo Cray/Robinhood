@@ -85,7 +85,11 @@ UNIT_TEST(test_create_cpp_collapse_module)
     CU_ASSERT_PTR_NOT_NULL(cpp_instance_by_name);
     CU_ASSERT_EQUAL(cpp_instance, cpp_instance_by_name);
 
+    if (cpp_instance == NULL)
+        return;
     CU_ASSERT_PTR_NOT_NULL(cpp_instance->cpp);
+    if (cpp_instance->cpp == NULL)
+        return;
     CU_ASSERT_PTR_NOT_NULL(cpp_instance->cpp->action);
 }
 
