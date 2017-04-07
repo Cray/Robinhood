@@ -12,10 +12,13 @@ Makefile
 *.gcda
 *.gcno
 *~
+*.swp
 \#*\#
 TAGS
 cscope.*
 build_failed
+
+*.log
 
 /autotools/depcomp
 /autotools/install-sh
